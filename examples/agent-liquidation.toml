@@ -1,0 +1,58 @@
+[meta]
+name = "Liquidation Bot Backtest"
+
+[agent]
+command = ["python3", "examples/liquidation_bot.py"]
+timeout_ms = 5000
+
+[params]
+maintenance_margin_bps = 500
+initial_margin_bps = 1000
+min_initial_deposit = 2
+
+[market]
+initial_oracle_price = 1000
+initial_slot = 0
+
+[feed]
+type = "inline"
+prices = [
+  { oracle = 1000, slot = 200 },
+  { oracle = 900,  slot = 300 },
+  { oracle = 800,  slot = 400 },
+  { oracle = 700,  slot = 500 },
+  { oracle = 600,  slot = 600 },
+  { oracle = 500,  slot = 700 },
+  { oracle = 400,  slot = 800 },
+  { oracle = 300,  slot = 900 },
+  { oracle = 200,  slot = 1000 },
+  { oracle = 100,  slot = 1100 },
+]
+
+[budget]
+max_ticks = 1000
+accounts = ["alice", "bob"]
+
+# Alice goes long, Bob goes short.
+# As price rises, Bob gets liquidated.
+[[setup]]
+action = "deposit"
+account = "alice"
+amount = 100000
+
+[[setup]]
+action = "deposit"
+account = "bob"
+amount = 100000
+
+[[setup]]
+action = "crank"
+oracle_price = 1000
+slot = 1
+
+[[setup]]
+action = "trade"
+long = "alice"
+short = "bob"
+size = 90
+price = 1000

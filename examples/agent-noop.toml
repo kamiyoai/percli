@@ -1,0 +1,38 @@
+[meta]
+name = "Noop Agent"
+
+[agent]
+command = ["bash", "examples/noop.sh"]
+timeout_ms = 5000
+
+[params]
+maintenance_margin_bps = 500
+initial_margin_bps = 1000
+
+[market]
+initial_oracle_price = 1000
+initial_slot = 0
+
+[feed]
+type = "inline"
+prices = [
+  { oracle = 1000, slot = 100 },
+  { oracle = 1050, slot = 200 },
+  { oracle = 1100, slot = 300 },
+  { oracle = 1050, slot = 400 },
+  { oracle = 900,  slot = 500 },
+]
+
+[budget]
+max_ticks = 1000
+accounts = ["alice", "bob"]
+
+[[setup]]
+action = "deposit"
+account = "alice"
+amount = 100000
+
+[[setup]]
+action = "deposit"
+account = "bob"
+amount = 100000
