@@ -15,6 +15,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 bytemuck = { version = "1", features = ["derive"], optional = true }
+pyth-sdk-solana = { version = "0.10", optional = true }
+solana-client = { version = "2.2", optional = true }
+solana-sdk = { version = "2.2", optional = true }
 
 [dev-dependencies]
 proptest = "1"
@@ -23,3 +26,4 @@ proptest = "1"
 default = ["test"]
 test = ["percolator/test"]
 solana = ["bytemuck"]
+pyth = ["pyth-sdk-solana", "solana-client", "solana-sdk"]

@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 percli-core = { version = "0.4.0", path = "../percli-core" }
 percli-chain = { version = "0.4", path = "../percli-chain", optional = true }
+solana-sdk = { version = "2.2", optional = true }
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 serde = { version = "1", features = ["derive"] }
@@ -28,7 +29,8 @@ owo-colors = { version = "4", features = ["supports-colors"] }
 
 [features]
 default = []
-chain = ["percli-chain"]
+chain = ["percli-chain", "solana-sdk"]
+pyth = ["percli-core/pyth"]
 
 [dev-dependencies]
 assert_cmd = "2"

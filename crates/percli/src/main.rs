@@ -134,6 +134,28 @@ enum Commands {
         #[command(subcommand)]
         action: commands::chain::ChainCommand,
     },
+    /// Run a keeper that auto-cranks and auto-liquidates on-chain
+    #[cfg(feature = "chain")]
+    #[command(after_help = "Examples:\n  \
+            percli keeper --interval 10\n  \
+            percli keeper --rpc devnet --pyth-feed H6ARHf6YXhGYeQfUzQNGk6rDNnLBQKrenN712K4AQJEG")]
+    Keeper {
+        /// RPC URL or alias (devnet, mainnet, localhost)
+        #[arg(long, global = true)]
+        rpc: Option<String>,
+        /// Path to keypair JSON file
+        #[arg(long, global = true)]
+        keypair: Option<String>,
+        /// Program ID override
+        #[arg(long, global = true)]
+        program: Option<String>,
+        /// Poll interval in seconds
+        #[arg(long, default_value = "10")]
+        interval: u64,
+        /// Pyth price feed account pubkey for live oracle updates
+        #[arg(long)]
+        pyth_feed: Option<String>,
+    },
     /// Generate shell completions
     Completions {
         /// Shell to generate completions for
@@ -272,6 +294,21 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             keypair.as_deref(),
             program.as_deref(),
         ),
+        #[cfg(feature = "chain")]
+        Commands::Keeper {
+            rpc,
+            keypair,
+            program,
+            interval,
+            pyth_feed,
+        } => {
+            let config = percli_chain::ChainConfig::new(
+                rpc.as_deref(),
+                keypair.as_deref(),
+                program.as_deref(),
+            )?;
+            commands::keeper::run(&config, interval, pyth_feed.as_deref())
+        }
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             generate(shell, &mut cmd, "percli", &mut std::io::stdout());

@@ -1,0 +1,57 @@
+# Liquidation Bot with Live Pyth Oracle Feed
+#
+# Streams real-time SOL/USD prices from Pyth on mainnet
+# and runs a liquidation bot against them.
+#
+# Requires: cargo install percli --features pyth
+# Usage:    percli agent run --config examples/agent-pyth.toml
+#           percli agent run --config examples/agent-pyth.toml --dry-run
+
+[meta]
+name = "Pyth Live Liquidation Bot"
+
+[agent]
+command = ["python3", "examples/liquidation_bot.py"]
+timeout_ms = 10000
+
+[params]
+maintenance_margin_bps = 500
+initial_margin_bps = 1000
+min_initial_deposit = 2
+
+[market]
+initial_oracle_price = 1000
+initial_slot = 0
+
+[feed]
+type = "pyth"
+rpc_url = "https://api.mainnet-beta.solana.com"
+feed_id = "H6ARHf6YXhGYeQfUzQNGk6rDNnLBQKrenN712K4AQJEG"  # SOL/USD
+poll_ms = 2000
+max_ticks = 500
+
+[budget]
+max_ticks = 500
+accounts = ["alice", "bob"]
+
+[[setup]]
+action = "deposit"
+account = "alice"
+amount = 100000
+
+[[setup]]
+action = "deposit"
+account = "bob"
+amount = 100000
+
+[[setup]]
+action = "crank"
+oracle_price = 1000
+slot = 1
+
+[[setup]]
+action = "trade"
+long = "alice"
+short = "bob"
+size = 90
+price = 1000

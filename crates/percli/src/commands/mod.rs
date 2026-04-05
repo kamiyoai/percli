@@ -3,6 +3,8 @@ pub mod agent;
 pub mod chain;
 pub mod init;
 pub mod inspect;
+#[cfg(feature = "chain")]
+pub mod keeper;
 pub mod query;
 pub mod sim;
 pub mod state;

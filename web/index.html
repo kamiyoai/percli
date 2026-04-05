@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>percli playground</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --mono: "SF Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  header h1 span { color: var(--text-dim); font-weight: 400; }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+  }
+
+  select {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  select:focus { outline: none; border-color: var(--accent); }
+
+  button {
+    background: var(--green);
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { opacity: 0.9; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .panels {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel + .panel { border-left: 1px solid var(--border); }
+
+  .panel-header {
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  textarea {
+    flex: 1;
+    background: var(--bg);
+    color: var(--text);
+    border: none;
+    padding: 16px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+    resize: none;
+    tab-size: 2;
+  }
+  textarea:focus { outline: none; }
+
+  .output {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .output .error { color: var(--red); }
+  .output .success { color: var(--green); }
+  .output .info { color: var(--text-dim); }
+
+  .status {
+    padding: 8px 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .status .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-dim);
+  }
+  .status .dot.ready { background: var(--green); }
+  .status .dot.loading { background: var(--yellow); }
+  .status .dot.error { background: var(--red); }
+
+  @media (max-width: 768px) {
+    .panels { flex-direction: column; }
+    .panel + .panel { border-left: none; border-top: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>percli <span>playground</span></h1>
+  <div class="toolbar">
+    <select id="scenario-select">
+      <option value="">-- Load scenario --</option>
+      <option value="basic-trade">Basic Trade</option>
+      <option value="liquidation-cascade">Liquidation Cascade</option>
+      <option value="haircut-stress">Haircut Stress</option>
+      <option value="insurance-depletion">Insurance Depletion</option>
+      <option value="funding-drift">Funding Drift</option>
+    </select>
+    <button id="run-btn" disabled>Run</button>
+    <button id="clear-btn" class="secondary">Clear</button>
+  </div>
+</header>
+
+<div class="panels">
+  <div class="panel">
+    <div class="panel-header">Scenario (TOML)</div>
+    <textarea id="editor" spellcheck="false" placeholder="Paste or select a TOML scenario..."></textarea>
+  </div>
+  <div class="panel">
+    <div class="panel-header">Results (JSON)</div>
+    <div id="output" class="output"><span class="info">Load a scenario and click Run.</span></div>
+  </div>
+</div>
+
+<div class="status">
+  <div id="status-dot" class="dot"></div>
+  <span id="status-text">Loading WASM...</span>
+</div>
+
+<script type="module">
+const SCENARIOS = {
+"basic-trade": `# Basic Two-Party Trade
+# Alice goes long, Bob goes short. Price moves. Observe equity changes.
+
+[meta]
+name = "Basic Two-Party Trade"
+description = "Alice goes long, Bob goes short. Price rises 10%. Observe equity changes."
+
+[params]
+warmup_period_slots = 100
+maintenance_margin_bps = 500
+initial_margin_bps = 1000
+
+[market]
+initial_oracle_price = 1000
+initial_slot = 0
+
+[[steps]]
+action = "deposit"
+account = "alice"
+amount = 100_000
+
+[[steps]]
+action = "deposit"
+account = "bob"
+amount = 100_000
+
+[[steps]]
+action = "crank"
+oracle_price = 1000
+slot = 1
+
+[[steps]]
+action = "trade"
+long = "alice"
+short = "bob"
+size = 50
+price = 1000
+
+[[steps]]
+action = "crank"
+oracle_price = 1100
+slot = 200
+comment = "Price rises 10%"
+
+[[steps]]
+action = "query"
+metric = "summary"
+
+[[steps]]
+action = "assert"
+condition = "conservation"`,
+
+"liquidation-cascade": `# Liquidation Cascade
+# High-leverage trade meets a price crash. Watch the liquidation engine work.
+
+[meta]
+name = "Liquidation Cascade"
+description = "High-leverage position meets 50% price crash. Liquidation fires, insurance absorbs losses."
+
+[params]
+warmup_period_slots = 100
+maintenance_margin_bps = 500
+initial_margin_bps = 1000
+liquidation_fee_bps = 100
+
+[market]
+initial_oracle_price = 1000
+initial_slot = 0
+
+[[steps]]
+action = "deposit"
+account = "alice"
+amount = 100_000
+
+[[steps]]
+action = "deposit"
+account = "bob"
+amount = 100_000
+
+[[steps]]
+action = "crank"
+oracle_price = 1000
+slot = 1
+
+[[steps]]
+action = "trade"
+long = "alice"
+short = "bob"
+size = 80
+price = 1000
+comment = "80x size on 100k capital - high leverage"
+
+[[steps]]
+action = "crank"
+oracle_price = 500
+slot = 200
+comment = "Price crashes 50%"
+
+[[steps]]
+action = "query"
+metric = "summary"
+comment = "Alice should be below maintenance margin"
+
+[[steps]]
+action = "liquidate"
+account = "alice"
+
+[[steps]]
+action = "query"
+metric = "summary"
+comment = "Post-liquidation state"
+
+[[steps]]
+action = "assert"
+condition = "conservation"`,
+
+"haircut-stress": `# Haircut Stress Test
+# Large positions, extreme losses - watch the haircut mechanism socialize losses fairly.
+
+[meta]
+name = "Haircut Stress Test"
+description = "Multiple traders with large positions. Extreme price move. Haircut mechanism activates."
+
+[params]
+warmup_period_slots = 10
+maintenance_margin_bps = 500
+initial_margin_bps = 1000
+
+[market]
+initial_oracle_price = 1000
+initial_slot = 0
+
+[[steps]]
+action = "deposit"
+account = "alice"
+amount = 500_000
+
+[[steps]]
+action = "deposit"
+account = "bob"
+amount = 500_000
+
+[[steps]]
+action = "deposit"
+account = "charlie"
+amount = 200_000
+
+[[steps]]
+action = "crank"
+oracle_price = 1000
+slot = 1
+
+[[steps]]
+action = "trade"
+long = "alice"
+short = "bob"
+size = 400
+price = 1000
+comment = "Large leveraged position"
+
+[[steps]]
+action = "crank"
+oracle_price = 500
+slot = 200
+comment = "Price crashes 50% - massive PnL swing"
+
+[[steps]]
+action = "query"
+metric = "summary"
+comment = "Observe haircut ratio and account states"
+
+[[steps]]
+action = "assert"
+condition = "conservation"
+comment = "Conservation MUST hold even under extreme stress"`,
+
+"insurance-depletion": `# Insurance Fund Depletion
+# Watch insurance absorb losses, then haircuts kick in.
+
+[meta]
+name = "Insurance Depletion"
+description = "Catastrophic loss event. Insurance fund absorbs what it can. Haircut socializes the rest."
+
+[params]
+warmup_period_slots = 10
+maintenance_margin_bps = 500
+initial_margin_bps = 1000
+liquidation_fee_bps = 100
+
+[market]
+initial_oracle_price = 1000
+initial_slot = 0
+
+[[steps]]
+action = "deposit"
+account = "alice"
+amount = 1_000_000
+
+[[steps]]
+action = "deposit"
+account = "bob"
+amount = 1_000_000
+
+[[steps]]
+action = "crank"
+oracle_price = 1000
+slot = 1
+
+[[steps]]
+action = "trade"
+long = "alice"
+short = "bob"
+size = 800
+price = 1000
+comment = "Massive position relative to capital"
+
+[[steps]]
+action = "crank"
+oracle_price = 400
+slot = 100
+comment = "Price drops 60% - alice is deeply underwater"
+
+[[steps]]
+action = "query"
+metric = "summary"
+comment = "Pre-liquidation: observe alice below maintenance"
+
+[[steps]]
+action = "liquidate"
+account = "alice"
+
+[[steps]]
+action = "query"
+metric = "summary"
+comment = "Post-liquidation: observe insurance fund and haircut"
+
+[[steps]]
+action = "assert"
+condition = "conservation"
+comment = "No user can withdraw more than exists."`,
+
+"funding-drift": `# Funding Rate Drift
+# Observe how funding payments flow between longs and shorts over time.
+
+[meta]
+name = "Funding Rate Drift"
+description = "Hold positions across multiple slots with a positive funding rate."
+
+[params]
+warmup_period_slots = 100
+maintenance_margin_bps = 500
+initial_margin_bps = 1000
+
+[market]
+initial_oracle_price = 1000
+initial_slot = 0
+
+[[steps]]
+action = "deposit"
+account = "alice"
+amount = 200_000
+
+[[steps]]
+action = "deposit"
+account = "bob"
+amount = 200_000
+
+[[steps]]
+action = "crank"
+oracle_price = 1000
+slot = 1
+
+[[steps]]
+action = "trade"
+long = "alice"
+short = "bob"
+size = 100
+price = 1000
+
+[[steps]]
+action = "set_funding_rate"
+rate = 10
+comment = "10 bps/slot funding rate - longs pay shorts"
+
+[[steps]]
+action = "crank"
+oracle_price = 1000
+slot = 100
+comment = "100 slots pass at stable price"
+
+[[steps]]
+action = "query"
+metric = "summary"
+comment = "Observe funding impact on alice (long) and bob (short)"
+
+[[steps]]
+action = "crank"
+oracle_price = 1000
+slot = 500
+comment = "500 slots total - significant funding accumulated"
+
+[[steps]]
+action = "query"
+metric = "summary"
+
+[[steps]]
+action = "assert"
+condition = "conservation"`
+};
+
+const editor = document.getElementById("editor");
+const output = document.getElementById("output");
+const runBtn = document.getElementById("run-btn");
+const clearBtn = document.getElementById("clear-btn");
+const scenarioSelect = document.getElementById("scenario-select");
+const statusDot = document.getElementById("status-dot");
+const statusText = document.getElementById("status-text");
+
+let wasm = null;
+
+scenarioSelect.addEventListener("change", () => {
+  const key = scenarioSelect.value;
+  if (key && SCENARIOS[key]) {
+    editor.value = SCENARIOS[key];
+  }
+});
+
+clearBtn.addEventListener("click", () => {
+  output.innerHTML = '<span class="info">Load a scenario and click Run.</span>';
+});
+
+runBtn.addEventListener("click", () => {
+  if (!wasm) return;
+
+  const toml = editor.value.trim();
+  if (!toml) {
+    output.innerHTML = '<span class="error">No scenario to run. Paste TOML or select a scenario.</span>';
+    return;
+  }
+
+  statusDot.className = "dot loading";
+  statusText.textContent = "Running...";
+  runBtn.disabled = true;
+
+  // Defer so UI updates
+  requestAnimationFrame(() => {
+    try {
+      const start = performance.now();
+      const result = wasm.run_scenario(toml);
+      const elapsed = (performance.now() - start).toFixed(1);
+
+      const parsed = JSON.parse(result);
+      if (parsed.error) {
+        output.innerHTML = `<span class="error">Error: ${escapeHtml(parsed.error)}</span>`;
+        statusDot.className = "dot error";
+        statusText.textContent = `Failed (${elapsed}ms)`;
+      } else {
+        const formatted = JSON.stringify(parsed, null, 2);
+        output.innerHTML = `<span class="success">// Completed in ${elapsed}ms</span>\n${syntaxHighlight(formatted)}`;
+        statusDot.className = "dot ready";
+        statusText.textContent = `Done (${elapsed}ms)`;
+      }
+    } catch (e) {
+      output.innerHTML = `<span class="error">WASM error: ${escapeHtml(e.message)}</span>`;
+      statusDot.className = "dot error";
+      statusText.textContent = "Error";
+    }
+    runBtn.disabled = false;
+  });
+});
+
+// Handle Ctrl/Cmd+Enter to run
+editor.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+    e.preventDefault();
+    runBtn.click();
+  }
+  // Tab inserts spaces
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    editor.value = editor.value.substring(0, start) + "  " + editor.value.substring(end);
+    editor.selectionStart = editor.selectionEnd = start + 2;
+  }
+});
+
+function escapeHtml(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function syntaxHighlight(json) {
+  return escapeHtml(json).replace(
+    /("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(\.\d+)?([eE][+-]?\d+)?)/g,
+    (match) => {
+      let cls = "number";
+      if (/^"/.test(match)) {
+        cls = /:$/.test(match) ? "key" : "string";
+      } else if (/true|false/.test(match)) {
+        cls = "bool";
+      } else if (/null/.test(match)) {
+        cls = "null";
+      }
+      return `<span class="json-${cls}">${match}</span>`;
+    }
+  );
+}
+
+// Load WASM
+async function init() {
+  try {
+    const mod = await import("./pkg/percli_wasm.js");
+    await mod.default();
+    wasm = mod;
+    runBtn.disabled = false;
+    statusDot.className = "dot ready";
+    statusText.textContent = "Ready";
+  } catch (e) {
+    statusDot.className = "dot error";
+    statusText.textContent = `WASM load failed: ${e.message}`;
+    console.error("WASM init failed:", e);
+  }
+}
+
+init();
+</script>
+
+<style>
+  .json-key { color: var(--accent); }
+  .json-string { color: var(--green); }
+  .json-number { color: var(--yellow); }
+  .json-bool { color: #d2a8ff; }
+  .json-null { color: var(--text-dim); }
+</style>
+
+</body>
+</html>

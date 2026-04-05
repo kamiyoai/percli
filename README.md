@@ -24,6 +24,12 @@ cargo install percli
 cargo install percli --features chain
 ```
 
+**With live Pyth oracle feeds:**
+
+```bash
+cargo install percli --features pyth
+```
+
 **Pre-built binaries** for all platforms are also available on the [releases page](https://github.com/kamiyoai/percli/releases).
 
 ## Quick Start
@@ -55,6 +61,7 @@ percli sim demo.toml --format json
 | `init` | Generate a scenario template | `percli init --template liquidation` |
 | `agent` | Run an external process as a trading agent | `percli agent run --config agent.toml` |
 | `chain` | Interact with on-chain Solana program | `percli chain deploy` |
+| `keeper` | Auto-crank and auto-liquidate on-chain | `percli keeper --interval 10` |
 | `completions` | Generate shell completions | `percli completions zsh` |
 
 ### Simulation Options
@@ -185,7 +192,22 @@ Agents communicate via NDJSON on stdin/stdout:
 
 Available actions: `deposit`, `withdraw`, `trade`, `liquidate`, `settle`, `noop`.
 
-Price feeds can be inline TOML arrays, CSV files, or piped via stdin for live data.
+Price feeds can be inline TOML arrays, CSV files, stdin, or live Pyth oracle streams (requires `--features pyth`).
+
+### Pyth Live Feed
+
+Stream real-time prices from Pyth Network into agent mode:
+
+```toml
+[feed]
+type = "pyth"
+rpc_url = "https://api.mainnet-beta.solana.com"
+feed_id = "H6ARHf6YXhGYeQfUzQNGk6rDNnLBQKrenN712K4AQJEG"  # SOL/USD
+poll_ms = 2000
+max_ticks = 500
+```
+
+See [`examples/agent-pyth.toml`](examples/agent-pyth.toml) for a complete config.
 
 ## On-Chain (Solana)
 
@@ -213,6 +235,26 @@ Global options: `--rpc <url>`, `--keypair <path>`, `--program <pubkey>`.
 
 The on-chain program (`percli-program`) is an Anchor program that wraps the Percolator engine in a Solana PDA. See [`Anchor.toml`](Anchor.toml) for deployment config.
 
+## Keeper Bot
+
+The `keeper` command watches an on-chain market and automatically cranks oracle updates and liquidates undercollateralized accounts:
+
+```bash
+# Basic keeper with 10s polling interval
+percli keeper --rpc devnet --interval 10
+
+# Keeper with live Pyth oracle feed
+percli keeper --rpc mainnet --pyth-feed H6ARHf6YXhGYeQfUzQNGk6rDNnLBQKrenN712K4AQJEG --interval 5
+```
+
+The keeper loops: read market state, update oracle if stale, liquidate anyone below maintenance margin, sleep, repeat.
+
+Requires `--features chain`.
+
+## Playground
+
+Try percli in your browser at [kamiyoai.github.io/percli](https://kamiyoai.github.io/percli) — no install required. Edit TOML scenarios and see simulation results instantly via WebAssembly.
+
 ## What is Percolator?
 
 [Percolator](https://github.com/aeyakovenko/percolator) is a risk engine for perpetual futures that replaces ADL queues with two deterministic mechanisms:
@@ -236,6 +278,7 @@ kamiyoai/percli (workspace)
 │   ├── percli-chain/ # Solana RPC client commands
 │   ├── percli-program/ # Anchor on-chain program
 │   └── percli-wasm/  # WebAssembly build
+├── web/              # browser playground (GitHub Pages)
 ├── scenarios/        # bundled TOML test scenarios
 ├── examples/         # agent examples (Python, Bash)
 ├── tests/            # upstream Kani formal verification proofs

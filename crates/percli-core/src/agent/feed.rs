@@ -13,9 +13,29 @@ pub struct PriceTick {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FeedConfig {
-    Inline { prices: Vec<PriceTick> },
-    Csv { path: PathBuf },
+    Inline {
+        prices: Vec<PriceTick>,
+    },
+    Csv {
+        path: PathBuf,
+    },
     Stdin,
+    Pyth {
+        rpc_url: String,
+        feed_id: String,
+        #[serde(default = "default_poll_ms")]
+        poll_ms: u64,
+        #[serde(default = "default_max_ticks")]
+        max_ticks: u64,
+    },
+}
+
+fn default_poll_ms() -> u64 {
+    2000
+}
+
+fn default_max_ticks() -> u64 {
+    1000
 }
 
 impl Default for FeedConfig {
@@ -65,6 +85,62 @@ impl FeedConfig {
                     .filter_map(|line| serde_json::from_str(&line).ok())
                     .collect();
                 Ok(Box::new(ticks.into_iter()))
+            }
+            #[cfg(feature = "pyth")]
+            FeedConfig::Pyth {
+                rpc_url,
+                feed_id,
+                poll_ms,
+                max_ticks,
+            } => {
+                use pyth_sdk_solana::load_price_feed_from_account_info;
+                use solana_client::rpc_client::RpcClient;
+                use solana_sdk::commitment_config::CommitmentConfig;
+
+                let client = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::confirmed());
+                let feed_pubkey: solana_sdk::pubkey::Pubkey = feed_id
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("invalid Pyth feed pubkey: {}", feed_id))?;
+
+                let mut ticks = Vec::new();
+                let mut last_slot = 0u64;
+
+                for _ in 0..max_ticks {
+                    match client.get_account(&feed_pubkey) {
+                        Ok(account) => {
+                            let mut data = account.data.as_slice();
+                            if let Ok(feed) = load_price_feed_from_account_info(&mut data) {
+                                if let Some(price) = feed.get_price_no_older_than(60) {
+                                    let slot = client.get_slot().unwrap_or(last_slot + 1);
+                                    // Convert Pyth price (with exponent) to u64
+                                    let oracle = if price.expo >= 0 {
+                                        (price.price as u64)
+                                            .saturating_mul(10u64.saturating_pow(price.expo as u32))
+                                    } else {
+                                        (price.price as u64)
+                                            / 10u64.saturating_pow((-price.expo) as u32)
+                                    };
+                                    if slot > last_slot {
+                                        ticks.push(PriceTick { oracle, slot });
+                                        last_slot = slot;
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("pyth feed error: {e}");
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(poll_ms));
+                }
+                Ok(Box::new(ticks.into_iter()))
+            }
+            #[cfg(not(feature = "pyth"))]
+            FeedConfig::Pyth { .. } => {
+                anyhow::bail!(
+                    "Pyth feed requires the `pyth` feature. \
+                     Install with: cargo install percli --features pyth"
+                )
             }
         }
     }
