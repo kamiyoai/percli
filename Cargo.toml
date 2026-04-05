@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/kamiyoai/percli"
@@ -18,11 +18,19 @@ keywords = ["percolator", "risk-engine", "defi", "solana", "perpetuals"]
 categories = ["simulation", "command-line-utilities"]
 
 # Root percolator library (upstream engine)
+# Published to crates.io as "percolator-engine" to avoid name conflict with upstream.
+# The lib name stays "percolator" so all imports remain unchanged.
 [package]
-name = "percolator"
-version = "0.1.0"
+name = "percolator-engine"
+version = "0.4.0"
 edition = "2021"
 license = "Apache-2.0"
+description = "Formally verified risk engine for perpetual futures — fair exits (H) and O(1) overhang clearing (A/K)"
+repository = "https://github.com/kamiyoai/percli"
+homepage = "https://github.com/aeyakovenko/percolator"
+keywords = ["percolator", "risk-engine", "defi", "perpetuals", "formally-verified"]
+categories = ["algorithms", "no-std"]
+readme = "README.md"
 
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }
