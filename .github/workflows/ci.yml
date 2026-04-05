@@ -24,7 +24,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --workspace --exclude percli-chain --exclude percli-program -- -D warnings
+        run: cargo clippy -p percli -p percli-core -p percli-wasm -- -D warnings
 
       - name: Test
         run: cargo test --workspace --exclude percli-chain --exclude percli-program

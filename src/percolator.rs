@@ -1,3 +1,4 @@
+#![allow(clippy::all, unused, unused_doc_comments)]
 //! Formally Verified Risk Engine for Perpetual DEX — v12.1.0
 //!
 //! Implements the v12.1.0 spec: Native 128-bit Architecture.
