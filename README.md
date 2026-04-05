@@ -6,15 +6,25 @@ CLI toolkit for the [Percolator](https://github.com/aeyakovenko/percolator) risk
 
 ## Install
 
+**Pre-built binary** (Linux, macOS):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kamiyoai/percli/master/install.sh | bash
+```
+
+**From source** (requires Rust):
+
 ```bash
 cargo install percli
 ```
 
-With on-chain Solana commands:
+**With on-chain Solana commands:**
 
 ```bash
 cargo install percli --features chain
 ```
+
+**Pre-built binaries** for all platforms are also available on the [releases page](https://github.com/kamiyoai/percli/releases).
 
 ## Quick Start
 
