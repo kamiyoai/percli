@@ -113,12 +113,9 @@ fn assert_global_invariants(engine: &RiskEngine, context: &str) {
         sum_capital
     );
     assert_eq!(
-        engine.pnl_pos_tot,
-        sum_pnl_pos,
+        engine.pnl_pos_tot, sum_pnl_pos,
         "{}: pnl_pos_tot={} != sum(max(pnl,0))={}",
-        context,
-        engine.pnl_pos_tot,
-        sum_pnl_pos
+        context, engine.pnl_pos_tot, sum_pnl_pos
     );
 
     // 3. Account local sanity (for each used account)
@@ -294,8 +291,8 @@ struct FuzzState {
     engine: Box<RiskEngine>,
     live_accounts: Vec<u16>,
     lp_idx: Option<u16>,
-    account_ids: Vec<u64>, // Track allocated account IDs for uniqueness
-    rng_state: u64,        // For deterministic selector resolution
+    account_ids: Vec<u64>,  // Track allocated account IDs for uniqueness
+    rng_state: u64,         // For deterministic selector resolution
     last_oracle_price: u64, // Track last oracle price for conservation checks with mark PnL
 }
 
@@ -499,7 +496,9 @@ impl FuzzState {
                 let vault_before = self.engine.vault;
 
                 let now_slot = self.engine.current_slot;
-                let result = self.engine.withdraw_not_atomic(idx, *amount, oracle, now_slot, 0i64);
+                let result = self
+                    .engine
+                    .withdraw_not_atomic(idx, *amount, oracle, now_slot, 0i64);
 
                 match result {
                     Ok(()) => {
@@ -541,9 +540,7 @@ impl FuzzState {
                 self.engine.funding_rate_bps_per_slot_last = *rate_bps;
                 let now_slot = self.engine.current_slot.saturating_add(*dt);
 
-                let result = self
-                    .engine
-                    .accrue_market_to(now_slot, *oracle_price);
+                let result = self.engine.accrue_market_to(now_slot, *oracle_price);
 
                 match result {
                     Ok(()) => {
@@ -562,7 +559,9 @@ impl FuzzState {
                 let before = (*self.engine).clone();
                 let now_slot = self.engine.current_slot;
 
-                let result = self.engine.touch_account_full_not_atomic(idx as usize, oracle, now_slot);
+                let result =
+                    self.engine
+                        .touch_account_full_not_atomic(idx as usize, oracle, now_slot);
 
                 match result {
                     Ok(()) => {
@@ -592,9 +591,15 @@ impl FuzzState {
                 let before = (*self.engine).clone();
                 let now_slot = self.engine.current_slot;
 
-                let result =
-                    self.engine
-                        .execute_trade_not_atomic(lp_idx, user_idx, *oracle_price, now_slot, *size, *oracle_price, 0i64);
+                let result = self.engine.execute_trade_not_atomic(
+                    lp_idx,
+                    user_idx,
+                    *oracle_price,
+                    now_slot,
+                    *size,
+                    *oracle_price,
+                    0i64,
+                );
 
                 match result {
                     Ok(_) => {
@@ -932,7 +937,9 @@ fn run_deterministic_fuzzer(
 
         // Initial deposits
         for &idx in &state.live_accounts.clone() {
-            let _ = state.engine.deposit(idx, rng.u128(5_000, 50_000), DEFAULT_ORACLE, 0);
+            let _ = state
+                .engine
+                .deposit(idx, rng.u128(5_000, 50_000), DEFAULT_ORACLE, 0);
         }
 
         // Top up insurance using proper API (maintains conservation)
@@ -941,7 +948,9 @@ fn run_deterministic_fuzzer(
         let current_ins = state.engine.insurance_fund.balance.get();
         if target_ins > current_ins {
             let now_slot = state.engine.current_slot;
-            let _ = state.engine.top_up_insurance_fund(target_ins - current_ins, now_slot);
+            let _ = state
+                .engine
+                .top_up_insurance_fund(target_ins - current_ins, now_slot);
         }
 
         // Verify conservation after setup
@@ -949,14 +958,16 @@ fn run_deterministic_fuzzer(
             eprintln!("Conservation failed after setup for seed {}", seed);
             eprintln!(
                 "  vault={}, insurance={}",
-                state.engine.vault.get(), state.engine.insurance_fund.balance.get()
+                state.engine.vault.get(),
+                state.engine.insurance_fund.balance.get()
             );
             eprintln!("  live_accounts={:?}", state.live_accounts);
             let mut total_cap = 0u128;
             for &idx in &state.live_accounts {
                 eprintln!(
                     "  account[{}]: capital={}",
-                    idx, state.engine.accounts[idx as usize].capital.get()
+                    idx,
+                    state.engine.accounts[idx as usize].capital.get()
                 );
                 total_cap += state.engine.accounts[idx as usize].capital.get();
             }
@@ -1128,7 +1139,9 @@ fn conservation_after_trade_and_funding_regression() {
     let lp_idx = engine.add_lp([0u8; 32], [0u8; 32], 1).unwrap();
     let user_idx = engine.add_user(1).unwrap();
     engine.deposit(lp_idx, 100_000, DEFAULT_ORACLE, 0).unwrap();
-    engine.deposit(user_idx, 100_000, DEFAULT_ORACLE, 0).unwrap();
+    engine
+        .deposit(user_idx, 100_000, DEFAULT_ORACLE, 0)
+        .unwrap();
 
     // Make crank fresh
     engine.last_crank_slot = 0;
@@ -1138,7 +1151,15 @@ fn conservation_after_trade_and_funding_regression() {
 
     // Execute trade to create positions
     engine
-        .execute_trade_not_atomic(lp_idx, user_idx, DEFAULT_ORACLE, 0, 1000, DEFAULT_ORACLE, 0i64)
+        .execute_trade_not_atomic(
+            lp_idx,
+            user_idx,
+            DEFAULT_ORACLE,
+            0,
+            1000,
+            DEFAULT_ORACLE,
+            0i64,
+        )
         .unwrap();
 
     // Accrue market with funding

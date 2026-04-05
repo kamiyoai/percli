@@ -2,9 +2,9 @@
 // Tests complete user journeys with multiple participants
 
 #[cfg(feature = "test")]
-use percolator::*;
-#[cfg(feature = "test")]
 use percolator::i128::U128;
+#[cfg(feature = "test")]
+use percolator::*;
 
 #[cfg(feature = "test")]
 fn default_params() -> RiskParams {
@@ -102,7 +102,10 @@ fn test_e2e_complete_user_journey() {
 
     let alice_pnl = engine.accounts[alice as usize].pnl;
     // Long position + price up = positive PnL
-    assert!(alice_pnl > 0, "Alice should have positive PnL after price increase");
+    assert!(
+        alice_pnl > 0,
+        "Alice should have positive PnL after price increase"
+    );
 
     // === Phase 3: PNL Warmup ===
 
@@ -111,7 +114,9 @@ fn test_e2e_complete_user_journey() {
 
     // Touch to settle and convert warmup
     let slot = engine.current_slot;
-    engine.touch_account_full_not_atomic(alice as usize, new_price, slot).unwrap();
+    engine
+        .touch_account_full_not_atomic(alice as usize, new_price, slot)
+        .unwrap();
 
     // The key invariant is conservation
     assert!(engine.check_conservation(), "Conservation after warmup");
@@ -135,7 +140,9 @@ fn test_e2e_complete_user_journey() {
     // Advance for full warmup
     engine.advance_slot(200);
     let slot = engine.current_slot;
-    engine.touch_account_full_not_atomic(alice as usize, new_price, slot).unwrap();
+    engine
+        .touch_account_full_not_atomic(alice as usize, new_price, slot)
+        .unwrap();
 
     // Alice withdraws some capital
     let slot = engine.current_slot;
@@ -143,7 +150,9 @@ fn test_e2e_complete_user_journey() {
     let alice_cap = engine.accounts[alice as usize].capital.get();
     if alice_cap > 1000 {
         let slot = engine.current_slot;
-        engine.withdraw_not_atomic(alice, 1000, new_price, slot, 0i64).unwrap();
+        engine
+            .withdraw_not_atomic(alice, 1000, new_price, slot, 0i64)
+            .unwrap();
     }
 
     assert!(engine.check_conservation(), "Conservation after withdrawal");
@@ -186,7 +195,9 @@ fn test_e2e_funding_complete_cycle() {
     // keeper_crank_not_atomic stores r_last = 500 via recompute_r_last_from_final_state
     engine.advance_slot(1);
     let slot1 = engine.current_slot;
-    engine.keeper_crank_not_atomic(slot1, oracle_price, &[], 64, 500i64).unwrap();
+    engine
+        .keeper_crank_not_atomic(slot1, oracle_price, &[], 64, 500i64)
+        .unwrap();
 
     // Now r_last = 500. Advance time so next accrue_market_to applies funding.
     engine.advance_slot(20);
@@ -195,23 +206,36 @@ fn test_e2e_funding_complete_cycle() {
     // This crank accrues the market (which applies 20 slots of funding at rate 500)
     // then touches both accounts (settle_side_effects realizes the K delta into PnL,
     // then settle_losses transfers negative PnL from capital)
-    engine.keeper_crank_not_atomic(slot2, oracle_price,
-        &[(alice, None), (bob, None)], 64, 500i64).unwrap();
+    engine
+        .keeper_crank_not_atomic(
+            slot2,
+            oracle_price,
+            &[(alice, None), (bob, None)],
+            64,
+            500i64,
+        )
+        .unwrap();
 
     let alice_cap_after = engine.accounts[alice as usize].capital.get();
     let bob_cap_after = engine.accounts[bob as usize].capital.get();
 
     // Alice (long) paid funding → capital decreased (loss settled from principal)
-    assert!(alice_cap_after < alice_cap_before,
+    assert!(
+        alice_cap_after < alice_cap_before,
         "positive rate: long capital must decrease from funding (before={}, after={})",
-        alice_cap_before, alice_cap_after);
+        alice_cap_before,
+        alice_cap_after
+    );
 
     // Bob (short) received funding → PnL positive, but it goes to reserved_pnl
     // (warmup). Bob's capital stays the same but PnL + reserved goes up.
     // Check that bob didn't lose capital like alice did.
-    assert!(bob_cap_after >= bob_cap_before,
+    assert!(
+        bob_cap_after >= bob_cap_before,
         "positive rate: short capital must not decrease from funding (before={}, after={})",
-        bob_cap_before, bob_cap_after);
+        bob_cap_before,
+        bob_cap_after
+    );
 
     // Net check: alice lost more capital than bob (funding is zero-sum at K level,
     // but floor rounding means payers lose weakly more than receivers gain)
@@ -225,7 +249,15 @@ fn test_e2e_funding_complete_cycle() {
 
     // Alice closes long and opens short (total -200 base)
     engine
-        .execute_trade_not_atomic(bob, alice, oracle_price, slot, pos_q(200), oracle_price, 0i64)
+        .execute_trade_not_atomic(
+            bob,
+            alice,
+            oracle_price,
+            slot,
+            pos_q(200),
+            oracle_price,
+            0i64,
+        )
         .unwrap();
 
     // Now Alice is short and Bob is long
@@ -234,7 +266,10 @@ fn test_e2e_funding_complete_cycle() {
     assert!(alice_eff < 0, "Alice should now be short");
     assert!(bob_eff > 0, "Bob should now be long");
 
-    assert!(engine.check_conservation(), "Conservation after position flip");
+    assert!(
+        engine.check_conservation(),
+        "Conservation after position flip"
+    );
 }
 
 #[test]
@@ -266,30 +301,51 @@ fn test_e2e_negative_funding_rate() {
     // Store negative rate: shorts pay longs (-500 bps/slot)
     engine.advance_slot(1);
     let slot1 = engine.current_slot;
-    engine.keeper_crank_not_atomic(slot1, oracle_price, &[], 64, -500i64).unwrap();
+    engine
+        .keeper_crank_not_atomic(slot1, oracle_price, &[], 64, -500i64)
+        .unwrap();
 
     // Advance and settle
     engine.advance_slot(20);
     let slot2 = engine.current_slot;
-    engine.keeper_crank_not_atomic(slot2, oracle_price,
-        &[(alice, None), (bob, None)], 64, -500i64).unwrap();
+    engine
+        .keeper_crank_not_atomic(
+            slot2,
+            oracle_price,
+            &[(alice, None), (bob, None)],
+            64,
+            -500i64,
+        )
+        .unwrap();
 
     let alice_cap_after = engine.accounts[alice as usize].capital.get();
     let bob_cap_after = engine.accounts[bob as usize].capital.get();
 
     // Negative rate: shorts pay, longs receive
     // Bob (short) paid funding → capital decreased (loss settled from principal)
-    assert!(bob_cap_after < bob_cap_before,
+    assert!(
+        bob_cap_after < bob_cap_before,
         "negative rate: short capital must decrease (before={}, after={})",
-        bob_cap_before, bob_cap_after);
+        bob_cap_before,
+        bob_cap_after
+    );
 
     // Alice (long) received → capital must not decrease
-    assert!(alice_cap_after >= alice_cap_before,
+    assert!(
+        alice_cap_after >= alice_cap_before,
         "negative rate: long capital must not decrease (before={}, after={})",
-        alice_cap_before, alice_cap_after);
+        alice_cap_before,
+        alice_cap_after
+    );
 
     let bob_loss = bob_cap_before - bob_cap_after;
-    assert!(bob_loss > 0, "bob must have lost capital from negative funding");
+    assert!(
+        bob_loss > 0,
+        "bob must have lost capital from negative funding"
+    );
 
-    assert!(engine.check_conservation(), "Conservation with negative funding");
+    assert!(
+        engine.check_conservation(),
+        "Conservation with negative funding"
+    );
 }

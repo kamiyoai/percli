@@ -125,16 +125,10 @@ pub use i128::{I128, U128};
 // ============================================================================
 pub mod wide_math;
 use wide_math::{
-    U256, I256,
-    mul_div_floor_u128, mul_div_ceil_u128,
-    wide_mul_div_floor_u128,
-    wide_signed_mul_div_floor_from_k_pair,
-    wide_mul_div_ceil_u128_or_over_i128max, OverI128Magnitude,
-    saturating_mul_u128_u64,
-    fee_debt_u128_checked,
-    mul_div_floor_u256_with_rem,
-    ceil_div_positive_checked,
-    floor_div_signed_conservative_i128,
+    ceil_div_positive_checked, fee_debt_u128_checked, floor_div_signed_conservative_i128,
+    mul_div_ceil_u128, mul_div_floor_u128, mul_div_floor_u256_with_rem, saturating_mul_u128_u64,
+    wide_mul_div_ceil_u128_or_over_i128max, wide_mul_div_floor_u128,
+    wide_signed_mul_div_floor_from_k_pair, OverI128Magnitude, I256, U256,
 };
 
 // ============================================================================
@@ -176,7 +170,7 @@ impl InstructionContext {
 pub struct Account {
     pub account_id: u64,
     pub capital: U128,
-    pub kind: u8,  // 0 = User, 1 = LP (was AccountKind enum)
+    pub kind: u8, // 0 = User, 1 = LP (was AccountKind enum)
 
     /// Realized PnL (i128, spec §2.1)
     pub pnl: i128,
@@ -616,7 +610,9 @@ impl RiskEngine {
             "init_oracle_price must be in (0, MAX_ORACLE_PRICE] per spec §2.7"
         );
         self.vault = U128::ZERO;
-        self.insurance_fund = InsuranceFund { balance: U128::ZERO };
+        self.insurance_fund = InsuranceFund {
+            balance: U128::ZERO,
+        };
         self.params = params;
         self.current_slot = init_slot;
         self.funding_rate_bps_per_slot_last = 0;
@@ -733,7 +729,9 @@ impl RiskEngine {
         let idx = self.free_head;
         self.free_head = self.next_free[idx as usize];
         self.set_used(idx as usize);
-        self.num_used_accounts = self.num_used_accounts.checked_add(1)
+        self.num_used_accounts = self
+            .num_used_accounts
+            .checked_add(1)
             .expect("num_used_accounts overflow — slot leak corruption");
         Ok(idx)
     }
@@ -766,8 +764,10 @@ impl RiskEngine {
         }
 
         // Enforce materialized_account_count bound (spec §10.0)
-        self.materialized_account_count = self.materialized_account_count
-            .checked_add(1).ok_or(RiskError::Overflow)?;
+        self.materialized_account_count = self
+            .materialized_account_count
+            .checked_add(1)
+            .ok_or(RiskError::Overflow)?;
         if self.materialized_account_count > MAX_MATERIALIZED_ACCOUNTS {
             self.materialized_account_count -= 1;
             return Err(RiskError::Overflow);
@@ -799,7 +799,9 @@ impl RiskEngine {
         }
 
         self.set_used(idx as usize);
-        self.num_used_accounts = self.num_used_accounts.checked_add(1)
+        self.num_used_accounts = self
+            .num_used_accounts
+            .checked_add(1)
             .expect("num_used_accounts overflow — slot leak corruption");
 
         let account_id = self.next_account_id;
@@ -1177,12 +1179,14 @@ impl RiskEngine {
     fn inc_phantom_dust_bound(&mut self, s: Side) {
         match s {
             Side::Long => {
-                self.phantom_dust_bound_long_q = self.phantom_dust_bound_long_q
+                self.phantom_dust_bound_long_q = self
+                    .phantom_dust_bound_long_q
                     .checked_add(1u128)
                     .expect("phantom_dust_bound_long_q overflow");
             }
             Side::Short => {
-                self.phantom_dust_bound_short_q = self.phantom_dust_bound_short_q
+                self.phantom_dust_bound_short_q = self
+                    .phantom_dust_bound_short_q
                     .checked_add(1u128)
                     .expect("phantom_dust_bound_short_q overflow");
             }
@@ -1193,12 +1197,14 @@ impl RiskEngine {
     fn inc_phantom_dust_bound_by(&mut self, s: Side, amount_q: u128) {
         match s {
             Side::Long => {
-                self.phantom_dust_bound_long_q = self.phantom_dust_bound_long_q
+                self.phantom_dust_bound_long_q = self
+                    .phantom_dust_bound_long_q
                     .checked_add(amount_q)
                     .expect("phantom_dust_bound_long_q overflow");
             }
             Side::Short => {
-                self.phantom_dust_bound_short_q = self.phantom_dust_bound_short_q
+                self.phantom_dust_bound_short_q = self
+                    .phantom_dust_bound_short_q
                     .checked_add(amount_q)
                     .expect("phantom_dust_bound_short_q overflow");
             }
@@ -1240,11 +1246,17 @@ impl RiskEngine {
             if effective_abs == 0 {
                 0i128
             } else {
-                assert!(effective_abs <= i128::MAX as u128, "effective_pos_q: overflow");
+                assert!(
+                    effective_abs <= i128::MAX as u128,
+                    "effective_pos_q: overflow"
+                );
                 -(effective_abs as i128)
             }
         } else {
-            assert!(effective_abs <= i128::MAX as u128, "effective_pos_q: overflow");
+            assert!(
+                effective_abs <= i128::MAX as u128,
+                "effective_pos_q: overflow"
+            );
             effective_abs as i128
         }
     }
@@ -1395,7 +1407,8 @@ impl RiskEngine {
 
         // Step 5: Mark-to-market (once, spec §1.5 item 21)
         let current_price = self.last_oracle_price;
-        let delta_p = (oracle_price as i128).checked_sub(current_price as i128)
+        let delta_p = (oracle_price as i128)
+            .checked_sub(current_price as i128)
             .ok_or(RiskError::Overflow)?;
         if delta_p != 0 {
             if long_live {
@@ -1479,8 +1492,12 @@ impl RiskEngine {
     /// recompute_r_last_from_final_state in the canonical order.
     /// Callers that bypass `keeper_crank_not_atomic` (e.g. the resolved-market
     /// settlement crank) must invoke this before returning.
-    pub fn run_end_of_instruction_lifecycle(&mut self, ctx: &mut InstructionContext, funding_rate: i64) -> Result<()> {
-                Self::validate_funding_rate(funding_rate)?;
+    pub fn run_end_of_instruction_lifecycle(
+        &mut self,
+        ctx: &mut InstructionContext,
+        funding_rate: i64,
+    ) -> Result<()> {
+        Self::validate_funding_rate(funding_rate)?;
 
         self.schedule_end_of_instruction_resets(ctx)?;
         self.finalize_end_of_instruction_resets(ctx);
@@ -1840,7 +1857,10 @@ impl RiskEngine {
         if self.pnl_matured_pos_tot == 0 {
             return (1u128, 1u128);
         }
-        let senior_sum = self.c_tot.get().checked_add(self.insurance_fund.balance.get());
+        let senior_sum = self
+            .c_tot
+            .get()
+            .checked_add(self.insurance_fund.balance.get());
         let residual: u128 = match senior_sum {
             Some(ss) => {
                 if self.vault.get() >= ss {
@@ -1851,7 +1871,11 @@ impl RiskEngine {
             }
             None => 0u128, // overflow in senior_sum → deficit
         };
-        let h_num = if residual < self.pnl_matured_pos_tot { residual } else { self.pnl_matured_pos_tot };
+        let h_num = if residual < self.pnl_matured_pos_tot {
+            residual
+        } else {
+            self.pnl_matured_pos_tot
+        };
         (h_num, self.pnl_matured_pos_tot)
     }
 
@@ -1882,7 +1906,11 @@ impl RiskEngine {
                 // but MUST fail conservatively — account is over-collateralized,
                 // so project to i128::MAX to prevent false liquidation.
                 // Negative overflow: project to i128::MIN + 1 per spec §3.4.
-                if wide.is_negative() { i128::MIN + 1 } else { i128::MAX }
+                if wide.is_negative() {
+                    i128::MIN + 1
+                } else {
+                    i128::MAX
+                }
             }
         }
     }
@@ -1903,7 +1931,11 @@ impl RiskEngine {
     /// Eq_net_i (spec §3.4): max(0, Eq_maint_raw_i). For maintenance margin checks.
     pub fn account_equity_net(&self, account: &Account, _oracle_price: u64) -> i128 {
         let raw = self.account_equity_maint_raw(account);
-        if raw < 0 { 0i128 } else { raw }
+        if raw < 0 {
+            0i128
+        } else {
+            raw
+        }
     }
 
     /// Eq_init_raw_i (spec §3.4): C_i + min(PNL_i, 0) + PNL_eff_matured_i - FeeDebt_i
@@ -1915,9 +1947,13 @@ impl RiskEngine {
         let eff_matured = I256::from_u128(self.effective_matured_pnl(idx));
         let fee_debt = I256::from_u128(fee_debt_u128_checked(account.fee_credits.get()));
 
-        let sum = cap.checked_add(neg_pnl).expect("I256 add overflow")
-            .checked_add(eff_matured).expect("I256 add overflow")
-            .checked_sub(fee_debt).expect("I256 sub overflow");
+        let sum = cap
+            .checked_add(neg_pnl)
+            .expect("I256 add overflow")
+            .checked_add(eff_matured)
+            .expect("I256 add overflow")
+            .checked_sub(fee_debt)
+            .expect("I256 sub overflow");
 
         match sum.try_into_i128() {
             Some(v) => v,
@@ -1925,7 +1961,11 @@ impl RiskEngine {
                 // Positive overflow: unreachable under configured bounds (spec §3.4),
                 // but MUST fail conservatively — project to i128::MAX.
                 // Negative overflow: project to i128::MIN + 1 per spec §3.4.
-                if sum.is_negative() { i128::MIN + 1 } else { i128::MAX }
+                if sum.is_negative() {
+                    i128::MIN + 1
+                } else {
+                    i128::MAX
+                }
             }
         }
     }
@@ -1933,7 +1973,11 @@ impl RiskEngine {
     /// Eq_init_net_i (spec §3.4): max(0, Eq_init_raw_i). For IM/withdrawal checks.
     pub fn account_equity_init_net(&self, account: &Account, idx: usize) -> i128 {
         let raw = self.account_equity_init_raw(account, idx);
-        if raw < 0 { 0i128 } else { raw }
+        if raw < 0 {
+            0i128
+        } else {
+            raw
+        }
     }
 
     /// notional (spec §9.1): floor(|effective_pos_q| * oracle_price / POS_SCALE)
@@ -1948,16 +1992,26 @@ impl RiskEngine {
 
     /// is_above_maintenance_margin (spec §9.1): Eq_net_i > MM_req_i
     /// Per spec §9.1: if eff == 0 then MM_req = 0; else MM_req = max(proportional, MIN_NONZERO_MM_REQ)
-    pub fn is_above_maintenance_margin(&self, account: &Account, idx: usize, oracle_price: u64) -> bool {
+    pub fn is_above_maintenance_margin(
+        &self,
+        account: &Account,
+        idx: usize,
+        oracle_price: u64,
+    ) -> bool {
         let eq_net = self.account_equity_net(account, oracle_price);
         let eff = self.effective_pos_q(idx);
         if eff == 0 {
             return eq_net > 0;
         }
         let not = self.notional(idx, oracle_price);
-        let proportional = mul_div_floor_u128(not, self.params.maintenance_margin_bps as u128, 10_000);
+        let proportional =
+            mul_div_floor_u128(not, self.params.maintenance_margin_bps as u128, 10_000);
         let mm_req = core::cmp::max(proportional, self.params.min_nonzero_mm_req);
-        let mm_req_i128 = if mm_req > i128::MAX as u128 { i128::MAX } else { mm_req as i128 };
+        let mm_req_i128 = if mm_req > i128::MAX as u128 {
+            i128::MAX
+        } else {
+            mm_req as i128
+        };
         eq_net > mm_req_i128
     }
 
@@ -1965,7 +2019,12 @@ impl RiskEngine {
     /// Per spec §9.1: if eff == 0 then IM_req = 0; else IM_req = max(proportional, MIN_NONZERO_IM_REQ)
     /// Per spec §3.4: MUST use exact raw equity, not clamped Eq_init_net_i,
     /// so negative raw equity is distinguishable from zero.
-    pub fn is_above_initial_margin(&self, account: &Account, idx: usize, oracle_price: u64) -> bool {
+    pub fn is_above_initial_margin(
+        &self,
+        account: &Account,
+        idx: usize,
+        oracle_price: u64,
+    ) -> bool {
         let eq_init_raw = self.account_equity_init_raw(account, idx);
         let eff = self.effective_pos_q(idx);
         if eff == 0 {
@@ -1974,7 +2033,11 @@ impl RiskEngine {
         let not = self.notional(idx, oracle_price);
         let proportional = mul_div_floor_u128(not, self.params.initial_margin_bps as u128, 10_000);
         let im_req = core::cmp::max(proportional, self.params.min_nonzero_im_req);
-        let im_req_i128 = if im_req > i128::MAX as u128 { i128::MAX } else { im_req as i128 };
+        let im_req_i128 = if im_req > i128::MAX as u128 {
+            i128::MAX
+        } else {
+            im_req as i128
+        };
         eq_init_raw >= im_req_i128
     }
 
@@ -1983,7 +2046,10 @@ impl RiskEngine {
     // ========================================================================
 
     pub fn check_conservation(&self) -> bool {
-        let senior = self.c_tot.get().checked_add(self.insurance_fund.balance.get());
+        let senior = self
+            .c_tot
+            .get()
+            .checked_add(self.insurance_fund.balance.get());
         match senior {
             Some(s) => self.vault.get() >= s,
             None => false,
@@ -2073,9 +2139,13 @@ impl RiskEngine {
         if pay > 0 {
             self.set_capital(idx, cap - pay);
             let pay_i128 = pay as i128; // pay <= need = |pnl| <= i128::MAX, safe
-            let new_pnl = pnl.checked_add(pay_i128)
+            let new_pnl = pnl
+                .checked_add(pay_i128)
                 .expect("settle_losses: unreachable overflow (pay <= |pnl|)");
-            assert!(new_pnl != i128::MIN, "settle_losses: new_pnl == i128::MIN is unreachable");
+            assert!(
+                new_pnl != i128::MIN,
+                "settle_losses: new_pnl == i128::MIN is unreachable"
+            );
             self.set_pnl(idx, new_pnl);
         }
     }
@@ -2107,7 +2177,10 @@ impl RiskEngine {
         // Because x > 0 implies pnl_matured_pos_tot > 0, h_den is strictly positive
         // (spec test property 69).
         let (h_num, h_den) = self.haircut_ratio();
-        assert!(h_den > 0, "do_profit_conversion: h_den must be > 0 when x > 0");
+        assert!(
+            h_den > 0,
+            "do_profit_conversion: h_den must be > 0 when x > 0"
+        );
         let y: u128 = wide_mul_div_floor_u128(x, h_num, h_den);
 
         // consume_released_pnl(i, x) — leaves R_i unchanged
@@ -2155,7 +2228,12 @@ impl RiskEngine {
     // touch_account_full_not_atomic (spec §10.1)
     // ========================================================================
 
-    pub fn touch_account_full_not_atomic(&mut self, idx: usize, oracle_price: u64, now_slot: u64) -> Result<()> {
+    pub fn touch_account_full_not_atomic(
+        &mut self,
+        idx: usize,
+        oracle_price: u64,
+        now_slot: u64,
+    ) -> Result<()> {
         // Bounds and existence check (hardened public API surface)
         if idx >= MAX_ACCOUNTS || !self.is_used(idx) {
             return Err(RiskError::AccountNotFound);
@@ -2413,7 +2491,13 @@ impl RiskEngine {
     // deposit (spec §10.2)
     // ========================================================================
 
-    pub fn deposit(&mut self, idx: u16, amount: u128, _oracle_price: u64, now_slot: u64) -> Result<()> {
+    pub fn deposit(
+        &mut self,
+        idx: u16,
+        amount: u128,
+        _oracle_price: u64,
+        now_slot: u64,
+    ) -> Result<()> {
         // Time monotonicity (spec §10.3 step 1)
         if now_slot < self.current_slot {
             return Err(RiskError::Overflow);
@@ -2423,7 +2507,11 @@ impl RiskEngine {
         }
 
         // Pre-validate vault capacity before any mutations (prevents ghost account)
-        let v_candidate = self.vault.get().checked_add(amount).ok_or(RiskError::Overflow)?;
+        let v_candidate = self
+            .vault
+            .get()
+            .checked_add(amount)
+            .ok_or(RiskError::Overflow)?;
         if v_candidate > MAX_VAULT_TVL {
             return Err(RiskError::Overflow);
         }
@@ -2457,8 +2545,7 @@ impl RiskEngine {
         // Step 9: if flat and PNL >= 0, sweep fee debt (spec §7.5)
         // Per spec §10.3: deposit into account with basis != 0 MUST defer.
         // Per spec §7.5: only a surviving negative PNL_i blocks the sweep.
-        if self.accounts[idx as usize].position_basis_q == 0
-            && self.accounts[idx as usize].pnl >= 0
+        if self.accounts[idx as usize].position_basis_q == 0 && self.accounts[idx as usize].pnl >= 0
         {
             self.fee_debt_sweep(idx as usize);
         }
@@ -2478,7 +2565,7 @@ impl RiskEngine {
         now_slot: u64,
         funding_rate: i64,
     ) -> Result<()> {
-                Self::validate_funding_rate(funding_rate)?;
+        Self::validate_funding_rate(funding_rate)?;
 
         if oracle_price == 0 || oracle_price > MAX_ORACLE_PRICE {
             return Err(RiskError::Overflow);
@@ -2516,7 +2603,11 @@ impl RiskEngine {
             let old_vault = self.vault;
             self.set_capital(idx as usize, post_cap);
             self.vault = U128::new(sub_u128(self.vault.get(), amount));
-            let passes_im = self.is_above_initial_margin(&self.accounts[idx as usize], idx as usize, oracle_price);
+            let passes_im = self.is_above_initial_margin(
+                &self.accounts[idx as usize],
+                idx as usize,
+                oracle_price,
+            );
             // Revert both
             self.set_capital(idx as usize, old_cap);
             self.vault = old_vault;
@@ -2526,7 +2617,10 @@ impl RiskEngine {
         }
 
         // Step 7: commit withdrawal
-        self.set_capital(idx as usize, self.accounts[idx as usize].capital.get() - amount);
+        self.set_capital(
+            idx as usize,
+            self.accounts[idx as usize].capital.get() - amount,
+        );
         self.vault = U128::new(sub_u128(self.vault.get(), amount));
 
         // Steps 8-9: end-of-instruction resets
@@ -2550,7 +2644,7 @@ impl RiskEngine {
         now_slot: u64,
         funding_rate: i64,
     ) -> Result<()> {
-                Self::validate_funding_rate(funding_rate)?;
+        Self::validate_funding_rate(funding_rate)?;
 
         if oracle_price == 0 || oracle_price > MAX_ORACLE_PRICE {
             return Err(RiskError::Overflow);
@@ -2570,7 +2664,10 @@ impl RiskEngine {
         self.recompute_r_last_from_final_state(funding_rate)?;
 
         // Step 7: assert OI balance
-        assert!(self.oi_eff_long_q == self.oi_eff_short_q, "OI_eff_long != OI_eff_short after settle");
+        assert!(
+            self.oi_eff_long_q == self.oi_eff_short_q,
+            "OI_eff_long != OI_eff_short after settle"
+        );
 
         Ok(())
     }
@@ -2589,7 +2686,7 @@ impl RiskEngine {
         exec_price: u64,
         funding_rate: i64,
     ) -> Result<()> {
-                Self::validate_funding_rate(funding_rate)?;
+        Self::validate_funding_rate(funding_rate)?;
 
         if oracle_price == 0 || oracle_price > MAX_ORACLE_PRICE {
             return Err(RiskError::Overflow);
@@ -2606,7 +2703,8 @@ impl RiskEngine {
         }
 
         // trade_notional check (spec §10.4 step 6)
-        let trade_notional_check = mul_div_floor_u128(size_q as u128, exec_price as u128, POS_SCALE);
+        let trade_notional_check =
+            mul_div_floor_u128(size_q as u128, exec_price as u128, POS_SCALE);
         if trade_notional_check > MAX_ACCOUNT_NOTIONAL {
             return Err(RiskError::Overflow);
         }
@@ -2634,29 +2732,39 @@ impl RiskEngine {
 
         // Steps 14-16: capture pre-trade MM requirements and raw maintenance buffers
         // Spec §9.1: if effective_pos_q(i) == 0, MM_req_i = 0
-        let mm_req_pre_a = if old_eff_a == 0 { 0u128 } else {
+        let mm_req_pre_a = if old_eff_a == 0 {
+            0u128
+        } else {
             let not = self.notional(a as usize, oracle_price);
             core::cmp::max(
-                    mul_div_floor_u128(not, self.params.maintenance_margin_bps as u128, 10_000),
-                    self.params.min_nonzero_mm_req
-                )
+                mul_div_floor_u128(not, self.params.maintenance_margin_bps as u128, 10_000),
+                self.params.min_nonzero_mm_req,
+            )
         };
-        let mm_req_pre_b = if old_eff_b == 0 { 0u128 } else {
+        let mm_req_pre_b = if old_eff_b == 0 {
+            0u128
+        } else {
             let not = self.notional(b as usize, oracle_price);
             core::cmp::max(
-                    mul_div_floor_u128(not, self.params.maintenance_margin_bps as u128, 10_000),
-                    self.params.min_nonzero_mm_req
-                )
+                mul_div_floor_u128(not, self.params.maintenance_margin_bps as u128, 10_000),
+                self.params.min_nonzero_mm_req,
+            )
         };
         let maint_raw_wide_pre_a = self.account_equity_maint_raw_wide(&self.accounts[a as usize]);
         let maint_raw_wide_pre_b = self.account_equity_maint_raw_wide(&self.accounts[b as usize]);
-        let buffer_pre_a = maint_raw_wide_pre_a.checked_sub(I256::from_u128(mm_req_pre_a)).expect("I256 sub");
-        let buffer_pre_b = maint_raw_wide_pre_b.checked_sub(I256::from_u128(mm_req_pre_b)).expect("I256 sub");
+        let buffer_pre_a = maint_raw_wide_pre_a
+            .checked_sub(I256::from_u128(mm_req_pre_a))
+            .expect("I256 sub");
+        let buffer_pre_b = maint_raw_wide_pre_b
+            .checked_sub(I256::from_u128(mm_req_pre_b))
+            .expect("I256 sub");
 
         // Step 6: compute new effective positions
         let new_eff_a = old_eff_a.checked_add(size_q).ok_or(RiskError::Overflow)?;
         let neg_size_q = size_q.checked_neg().ok_or(RiskError::Overflow)?;
-        let new_eff_b = old_eff_b.checked_add(neg_size_q).ok_or(RiskError::Overflow)?;
+        let new_eff_b = old_eff_b
+            .checked_add(neg_size_q)
+            .ok_or(RiskError::Overflow)?;
 
         // Validate position bounds
         if new_eff_a != 0 && new_eff_a.unsigned_abs() > MAX_POSITION_ABS_Q {
@@ -2668,11 +2776,13 @@ impl RiskEngine {
 
         // Validate notional bounds
         {
-            let notional_a = mul_div_floor_u128(new_eff_a.unsigned_abs(), oracle_price as u128, POS_SCALE);
+            let notional_a =
+                mul_div_floor_u128(new_eff_a.unsigned_abs(), oracle_price as u128, POS_SCALE);
             if notional_a > MAX_ACCOUNT_NOTIONAL {
                 return Err(RiskError::Overflow);
             }
-            let notional_b = mul_div_floor_u128(new_eff_b.unsigned_abs(), oracle_price as u128, POS_SCALE);
+            let notional_b =
+                mul_div_floor_u128(new_eff_b.unsigned_abs(), oracle_price as u128, POS_SCALE);
             if notional_b > MAX_ACCOUNT_NOTIONAL {
                 return Err(RiskError::Overflow);
             }
@@ -2684,8 +2794,8 @@ impl RiskEngine {
 
         // Step 5: compute bilateral OI once (spec §5.2.2) and use for both
         // mode gating and later writeback. Avoids redundant checked arithmetic.
-        let (oi_long_after, oi_short_after) = self.bilateral_oi_after(
-            &old_eff_a, &new_eff_a, &old_eff_b, &new_eff_b)?;
+        let (oi_long_after, oi_short_after) =
+            self.bilateral_oi_after(&old_eff_a, &new_eff_a, &old_eff_b, &new_eff_b)?;
 
         // Validate OI bounds
         if oi_long_after > MAX_OI_SIDE_Q || oi_short_after > MAX_OI_SIDE_Q {
@@ -2693,12 +2803,16 @@ impl RiskEngine {
         }
 
         // Reject if trade would increase OI on a blocked side
-        if (self.side_mode_long == SideMode::DrainOnly || self.side_mode_long == SideMode::ResetPending)
-            && oi_long_after > self.oi_eff_long_q {
+        if (self.side_mode_long == SideMode::DrainOnly
+            || self.side_mode_long == SideMode::ResetPending)
+            && oi_long_after > self.oi_eff_long_q
+        {
             return Err(RiskError::SideBlocked);
         }
-        if (self.side_mode_short == SideMode::DrainOnly || self.side_mode_short == SideMode::ResetPending)
-            && oi_short_after > self.oi_eff_short_q {
+        if (self.side_mode_short == SideMode::DrainOnly
+            || self.side_mode_short == SideMode::ResetPending)
+            && oi_short_after > self.oi_eff_short_q
+        {
             return Err(RiskError::SideBlocked);
         }
 
@@ -2710,12 +2824,22 @@ impl RiskEngine {
         let old_r_a = self.accounts[a as usize].reserved_pnl;
         let old_r_b = self.accounts[b as usize].reserved_pnl;
 
-        let pnl_a = self.accounts[a as usize].pnl.checked_add(trade_pnl_a).ok_or(RiskError::Overflow)?;
-        if pnl_a == i128::MIN { return Err(RiskError::Overflow); }
+        let pnl_a = self.accounts[a as usize]
+            .pnl
+            .checked_add(trade_pnl_a)
+            .ok_or(RiskError::Overflow)?;
+        if pnl_a == i128::MIN {
+            return Err(RiskError::Overflow);
+        }
         self.set_pnl(a as usize, pnl_a);
 
-        let pnl_b = self.accounts[b as usize].pnl.checked_add(trade_pnl_b).ok_or(RiskError::Overflow)?;
-        if pnl_b == i128::MIN { return Err(RiskError::Overflow); }
+        let pnl_b = self.accounts[b as usize]
+            .pnl
+            .checked_add(trade_pnl_b)
+            .ok_or(RiskError::Overflow)?;
+        if pnl_b == i128::MIN {
+            return Err(RiskError::Overflow);
+        }
         self.set_pnl(b as usize, pnl_b);
 
         // Caller obligation: restart warmup if R increased
@@ -2740,7 +2864,8 @@ impl RiskEngine {
         self.settle_losses(b as usize);
 
         // Step 11: charge trading fees (spec §10.4 step 19, §8.1)
-        let trade_notional = mul_div_floor_u128(size_q.unsigned_abs(), exec_price as u128, POS_SCALE);
+        let trade_notional =
+            mul_div_floor_u128(size_q.unsigned_abs(), exec_price as u128, POS_SCALE);
         let fee = if trade_notional > 0 && self.params.trading_fee_bps > 0 {
             mul_div_ceil_u128(trade_notional, self.params.trading_fee_bps as u128, 10_000)
         } else {
@@ -2770,14 +2895,16 @@ impl RiskEngine {
         // Debt may be collected later via fee_debt_sweep or forgiven on dust
         // reclamation — that's an insurance concern, not LP attribution.
         if self.accounts[a as usize].is_lp() {
-            self.accounts[a as usize].fees_earned_total = U128::new(
-                add_u128(self.accounts[a as usize].fees_earned_total.get(), fee_impact_b)
-            );
+            self.accounts[a as usize].fees_earned_total = U128::new(add_u128(
+                self.accounts[a as usize].fees_earned_total.get(),
+                fee_impact_b,
+            ));
         }
         if self.accounts[b as usize].is_lp() {
-            self.accounts[b as usize].fees_earned_total = U128::new(
-                add_u128(self.accounts[b as usize].fees_earned_total.get(), fee_impact_a)
-            );
+            self.accounts[b as usize].fees_earned_total = U128::new(add_u128(
+                self.accounts[b as usize].fees_earned_total.get(),
+                fee_impact_a,
+            ));
         }
 
         // Steps 25-26: flat-close PNL guard (spec §10.5)
@@ -2796,9 +2923,17 @@ impl RiskEngine {
         // - Adding back impact correctly reverses the actual state change
         // - Using nominal fee would over-compensate and admit invalid trades
         self.enforce_post_trade_margin(
-            a as usize, b as usize, oracle_price,
-            &old_eff_a, &new_eff_a, &old_eff_b, &new_eff_b,
-            buffer_pre_a, buffer_pre_b, fee_impact_a, fee_impact_b,
+            a as usize,
+            b as usize,
+            oracle_price,
+            &old_eff_a,
+            &new_eff_a,
+            &old_eff_b,
+            &new_eff_b,
+            buffer_pre_a,
+            buffer_pre_b,
+            fee_impact_a,
+            fee_impact_b,
         )?;
 
         // Steps 16-17: end-of-instruction resets
@@ -2809,7 +2944,10 @@ impl RiskEngine {
         self.recompute_r_last_from_final_state(funding_rate)?;
 
         // Step 18: assert OI balance (spec §10.4)
-        assert!(self.oi_eff_long_q == self.oi_eff_short_q, "OI_eff_long != OI_eff_short after trade");
+        assert!(
+            self.oi_eff_long_q == self.oi_eff_short_q,
+            "OI_eff_long != OI_eff_short after trade"
+        );
 
         Ok(())
     }
@@ -2855,31 +2993,51 @@ impl RiskEngine {
 
     /// OI component helpers for exact bilateral decomposition (spec §5.2.2)
     fn oi_long_component(pos: i128) -> u128 {
-        if pos > 0 { pos as u128 } else { 0u128 }
+        if pos > 0 {
+            pos as u128
+        } else {
+            0u128
+        }
     }
 
     fn oi_short_component(pos: i128) -> u128 {
-        if pos < 0 { pos.unsigned_abs() } else { 0u128 }
+        if pos < 0 {
+            pos.unsigned_abs()
+        } else {
+            0u128
+        }
     }
 
     /// Compute exact bilateral candidate side-OI after-values (spec §5.2.2).
     /// Returns (OI_long_after, OI_short_after).
     fn bilateral_oi_after(
         &self,
-        old_a: &i128, new_a: &i128,
-        old_b: &i128, new_b: &i128,
+        old_a: &i128,
+        new_a: &i128,
+        old_b: &i128,
+        new_b: &i128,
     ) -> Result<(u128, u128)> {
-        let oi_long_after = self.oi_eff_long_q
-            .checked_sub(Self::oi_long_component(*old_a)).ok_or(RiskError::CorruptState)?
-            .checked_sub(Self::oi_long_component(*old_b)).ok_or(RiskError::CorruptState)?
-            .checked_add(Self::oi_long_component(*new_a)).ok_or(RiskError::Overflow)?
-            .checked_add(Self::oi_long_component(*new_b)).ok_or(RiskError::Overflow)?;
+        let oi_long_after = self
+            .oi_eff_long_q
+            .checked_sub(Self::oi_long_component(*old_a))
+            .ok_or(RiskError::CorruptState)?
+            .checked_sub(Self::oi_long_component(*old_b))
+            .ok_or(RiskError::CorruptState)?
+            .checked_add(Self::oi_long_component(*new_a))
+            .ok_or(RiskError::Overflow)?
+            .checked_add(Self::oi_long_component(*new_b))
+            .ok_or(RiskError::Overflow)?;
 
-        let oi_short_after = self.oi_eff_short_q
-            .checked_sub(Self::oi_short_component(*old_a)).ok_or(RiskError::CorruptState)?
-            .checked_sub(Self::oi_short_component(*old_b)).ok_or(RiskError::CorruptState)?
-            .checked_add(Self::oi_short_component(*new_a)).ok_or(RiskError::Overflow)?
-            .checked_add(Self::oi_short_component(*new_b)).ok_or(RiskError::Overflow)?;
+        let oi_short_after = self
+            .oi_eff_short_q
+            .checked_sub(Self::oi_short_component(*old_a))
+            .ok_or(RiskError::CorruptState)?
+            .checked_sub(Self::oi_short_component(*old_b))
+            .ok_or(RiskError::CorruptState)?
+            .checked_add(Self::oi_short_component(*new_a))
+            .ok_or(RiskError::Overflow)?
+            .checked_add(Self::oi_short_component(*new_b))
+            .ok_or(RiskError::Overflow)?;
 
         Ok((oi_long_after, oi_short_after))
     }
@@ -2888,10 +3046,13 @@ impl RiskEngine {
     /// A trade would increase net side OI iff OI_side_after > OI_eff_side.
     fn check_side_mode_for_trade(
         &self,
-        old_a: &i128, new_a: &i128,
-        old_b: &i128, new_b: &i128,
+        old_a: &i128,
+        new_a: &i128,
+        old_b: &i128,
+        new_b: &i128,
     ) -> Result<()> {
-        let (oi_long_after, oi_short_after) = self.bilateral_oi_after(old_a, new_a, old_b, new_b)?;
+        let (oi_long_after, oi_short_after) =
+            self.bilateral_oi_after(old_a, new_a, old_b, new_b)?;
 
         for &side in &[Side::Long, Side::Short] {
             let mode = self.get_side_mode(side);
@@ -2949,7 +3110,11 @@ impl RiskEngine {
             return Ok(());
         }
 
-        let abs_old: u128 = if *old_eff == 0 { 0u128 } else { old_eff.unsigned_abs() };
+        let abs_old: u128 = if *old_eff == 0 {
+            0u128
+        } else {
+            old_eff.unsigned_abs()
+        };
         let abs_new = new_eff.unsigned_abs();
 
         // Determine if risk-increasing (spec §9.2)
@@ -2980,27 +3145,34 @@ impl RiskEngine {
             let fee_wide = I256::from_u128(fee);
 
             // Fee-neutral post equity and buffer
-            let maint_raw_fee_neutral = maint_raw_wide_post.checked_add(fee_wide).expect("I256 add");
+            let maint_raw_fee_neutral =
+                maint_raw_wide_post.checked_add(fee_wide).expect("I256 add");
             let mm_req_post = {
                 let not = self.notional(idx, oracle_price);
                 core::cmp::max(
                     mul_div_floor_u128(not, self.params.maintenance_margin_bps as u128, 10_000),
-                    self.params.min_nonzero_mm_req
+                    self.params.min_nonzero_mm_req,
                 )
             };
-            let buffer_post_fee_neutral = maint_raw_fee_neutral.checked_sub(I256::from_u128(mm_req_post)).expect("I256 sub");
+            let buffer_post_fee_neutral = maint_raw_fee_neutral
+                .checked_sub(I256::from_u128(mm_req_post))
+                .expect("I256 sub");
 
             // Recover pre-trade raw equity from buffer_pre + MM_req_pre
             let mm_req_pre = {
-                let not_pre = if *old_eff == 0 { 0u128 } else {
+                let not_pre = if *old_eff == 0 {
+                    0u128
+                } else {
                     mul_div_floor_u128(old_eff.unsigned_abs(), oracle_price as u128, POS_SCALE)
                 };
                 core::cmp::max(
                     mul_div_floor_u128(not_pre, self.params.maintenance_margin_bps as u128, 10_000),
-                    self.params.min_nonzero_mm_req
+                    self.params.min_nonzero_mm_req,
                 )
             };
-            let maint_raw_pre = buffer_pre.checked_add(I256::from_u128(mm_req_pre)).expect("I256 add");
+            let maint_raw_pre = buffer_pre
+                .checked_add(I256::from_u128(mm_req_pre))
+                .expect("I256 add");
 
             // Condition 1: fee-neutral buffer strictly improves
             let cond1 = buffer_post_fee_neutral > buffer_pre;
@@ -3008,8 +3180,16 @@ impl RiskEngine {
             // Condition 2: fee-neutral shortfall below zero does not worsen
             // min(post + fee, 0) >= min(pre, 0)
             let zero = I256::from_i128(0);
-            let shortfall_post = if maint_raw_fee_neutral < zero { maint_raw_fee_neutral } else { zero };
-            let shortfall_pre = if maint_raw_pre < zero { maint_raw_pre } else { zero };
+            let shortfall_post = if maint_raw_fee_neutral < zero {
+                maint_raw_fee_neutral
+            } else {
+                zero
+            };
+            let shortfall_pre = if maint_raw_pre < zero {
+                maint_raw_pre
+            } else {
+                zero
+            };
             let cond2 = shortfall_post >= shortfall_pre;
 
             if cond1 && cond2 {
@@ -3027,10 +3207,13 @@ impl RiskEngine {
     /// The same values computed for gating MUST be written back — no alternate decomposition.
     fn update_oi_from_positions(
         &mut self,
-        old_a: &i128, new_a: &i128,
-        old_b: &i128, new_b: &i128,
+        old_a: &i128,
+        new_a: &i128,
+        old_b: &i128,
+        new_b: &i128,
     ) -> Result<()> {
-        let (oi_long_after, oi_short_after) = self.bilateral_oi_after(old_a, new_a, old_b, new_b)?;
+        let (oi_long_after, oi_short_after) =
+            self.bilateral_oi_after(old_a, new_a, old_b, new_b)?;
 
         // Check bounds
         if oi_long_after > MAX_OI_SIDE_Q {
@@ -3060,7 +3243,7 @@ impl RiskEngine {
         policy: LiquidationPolicy,
         funding_rate: i64,
     ) -> Result<bool> {
-                Self::validate_funding_rate(funding_rate)?;
+        Self::validate_funding_rate(funding_rate)?;
 
         // Bounds and existence check BEFORE touch_account_full_not_atomic to prevent
         // market-state mutation (accrue_market_to) on missing accounts.
@@ -3073,7 +3256,8 @@ impl RiskEngine {
         // Per spec §10.6 step 3: touch_account_full_not_atomic before the liquidation routine.
         self.touch_account_full_not_atomic(idx as usize, oracle_price, now_slot)?;
 
-        let result = self.liquidate_at_oracle_internal(idx, now_slot, oracle_price, policy, &mut ctx)?;
+        let result =
+            self.liquidate_at_oracle_internal(idx, now_slot, oracle_price, policy, &mut ctx)?;
 
         // End-of-instruction resets must run unconditionally because
         // touch_account_full_not_atomic mutates state even when liquidation doesn't proceed.
@@ -3082,7 +3266,10 @@ impl RiskEngine {
         self.recompute_r_last_from_final_state(funding_rate)?;
 
         // Assert OI balance unconditionally (spec §10.6 step 11)
-        assert!(self.oi_eff_long_q == self.oi_eff_short_q, "OI_eff_long != OI_eff_short after liquidation");
+        assert!(
+            self.oi_eff_long_q == self.oi_eff_short_q,
+            "OI_eff_long != OI_eff_short after liquidation"
+        );
         Ok(result)
     }
 
@@ -3112,7 +3299,11 @@ impl RiskEngine {
         }
 
         // Step 4: check liquidation eligibility (spec §9.3)
-        if self.is_above_maintenance_margin(&self.accounts[idx as usize], idx as usize, oracle_price) {
+        if self.is_above_maintenance_margin(
+            &self.accounts[idx as usize],
+            idx as usize,
+            oracle_price,
+        ) {
             return Ok(false);
         }
 
@@ -3127,7 +3318,8 @@ impl RiskEngine {
                     return Err(RiskError::Overflow);
                 }
                 // Step 4: new_eff_abs_q = abs(old) - q_close_q
-                let new_eff_abs_q = abs_old_eff.checked_sub(q_close_q)
+                let new_eff_abs_q = abs_old_eff
+                    .checked_sub(q_close_q)
                     .ok_or(RiskError::Overflow)?;
                 // Step 5: require new_eff_abs_q > 0 (property 68)
                 if new_eff_abs_q == 0 {
@@ -3135,7 +3327,8 @@ impl RiskEngine {
                 }
                 // Step 6: new_eff_pos_q_i = sign(old) * new_eff_abs_q
                 let sign = if old_eff > 0 { 1i128 } else { -1i128 };
-                let new_eff = sign.checked_mul(new_eff_abs_q as i128)
+                let new_eff = sign
+                    .checked_mul(new_eff_abs_q as i128)
                     .ok_or(RiskError::Overflow)?;
 
                 // Step 7-8: close q_close_q at oracle, attach new position
@@ -3146,8 +3339,13 @@ impl RiskEngine {
 
                 // Step 10-11: charge liquidation fee on quantity closed
                 let liq_fee = {
-                    let notional_val = mul_div_floor_u128(q_close_q, oracle_price as u128, POS_SCALE);
-                    let liq_fee_raw = mul_div_ceil_u128(notional_val, self.params.liquidation_fee_bps as u128, 10_000);
+                    let notional_val =
+                        mul_div_floor_u128(q_close_q, oracle_price as u128, POS_SCALE);
+                    let liq_fee_raw = mul_div_ceil_u128(
+                        notional_val,
+                        self.params.liquidation_fee_bps as u128,
+                        10_000,
+                    );
                     core::cmp::min(
                         core::cmp::max(liq_fee_raw, self.params.min_liquidation_abs.get()),
                         self.params.liquidation_fee_cap.get(),
@@ -3163,7 +3361,11 @@ impl RiskEngine {
 
                 // Step 14: MANDATORY post-partial local maintenance health check
                 // This MUST run even when step 13 has scheduled a pending reset (spec §9.4).
-                if !self.is_above_maintenance_margin(&self.accounts[idx as usize], idx as usize, oracle_price) {
+                if !self.is_above_maintenance_margin(
+                    &self.accounts[idx as usize],
+                    idx as usize,
+                    oracle_price,
+                ) {
                     return Err(RiskError::Undercollateralized);
                 }
 
@@ -3184,8 +3386,13 @@ impl RiskEngine {
                 let liq_fee = if q_close_q == 0 {
                     0u128
                 } else {
-                    let notional_val = mul_div_floor_u128(q_close_q, oracle_price as u128, POS_SCALE);
-                    let liq_fee_raw = mul_div_ceil_u128(notional_val, self.params.liquidation_fee_bps as u128, 10_000);
+                    let notional_val =
+                        mul_div_floor_u128(q_close_q, oracle_price as u128, POS_SCALE);
+                    let liq_fee_raw = mul_div_ceil_u128(
+                        notional_val,
+                        self.params.liquidation_fee_bps as u128,
+                        10_000,
+                    );
                     core::cmp::min(
                         core::cmp::max(liq_fee_raw, self.params.min_liquidation_abs.get()),
                         self.params.liquidation_fee_cap.get(),
@@ -3196,7 +3403,10 @@ impl RiskEngine {
                 // Determine deficit D
                 let eff_post = self.effective_pos_q(idx as usize);
                 let d: u128 = if eff_post == 0 && self.accounts[idx as usize].pnl < 0 {
-                    assert!(self.accounts[idx as usize].pnl != i128::MIN, "liquidate: i128::MIN pnl");
+                    assert!(
+                        self.accounts[idx as usize].pnl != i128::MIN,
+                        "liquidate: i128::MIN pnl"
+                    );
                     self.accounts[idx as usize].pnl.unsigned_abs()
                 } else {
                     0u128
@@ -3233,7 +3443,7 @@ impl RiskEngine {
         max_revalidations: u16,
         funding_rate: i64,
     ) -> Result<CrankOutcome> {
-                Self::validate_funding_rate(funding_rate)?;
+        Self::validate_funding_rate(funding_rate)?;
 
         if oracle_price == 0 || oracle_price > MAX_ORACLE_PRICE {
             return Err(RiskError::Overflow);
@@ -3320,9 +3530,19 @@ impl RiskEngine {
                         // Validate hint via stateless pre-flight (spec §11.1 rule 3).
                         // None hint → no action per spec §11.2.
                         // Invalid ExactPartial → None (no action) per spec §11.1 rule 3.
-                        if let Some(policy) = self.validate_keeper_hint(candidate_idx, eff, hint, oracle_price) {
-                            match self.liquidate_at_oracle_internal(candidate_idx, now_slot, oracle_price, policy, &mut ctx) {
-                                Ok(true) => { num_liquidations += 1; }
+                        if let Some(policy) =
+                            self.validate_keeper_hint(candidate_idx, eff, hint, oracle_price)
+                        {
+                            match self.liquidate_at_oracle_internal(
+                                candidate_idx,
+                                now_slot,
+                                oracle_price,
+                                policy,
+                                &mut ctx,
+                            ) {
+                                Ok(true) => {
+                                    num_liquidations += 1;
+                                }
                                 Ok(false) => {}
                                 Err(e) => return Err(e),
                             }
@@ -3340,8 +3560,10 @@ impl RiskEngine {
         self.recompute_r_last_from_final_state(funding_rate)?;
 
         // Step 12: assert OI balance
-        assert!(self.oi_eff_long_q == self.oi_eff_short_q,
-            "OI_eff_long != OI_eff_short after keeper_crank_not_atomic");
+        assert!(
+            self.oi_eff_long_q == self.oi_eff_short_q,
+            "OI_eff_long != OI_eff_short after keeper_crank_not_atomic"
+        );
 
         Ok(CrankOutcome {
             advanced,
@@ -3452,7 +3674,7 @@ impl RiskEngine {
         now_slot: u64,
         funding_rate: i64,
     ) -> Result<()> {
-                Self::validate_funding_rate(funding_rate)?;
+        Self::validate_funding_rate(funding_rate)?;
 
         if oracle_price == 0 || oracle_price > MAX_ORACLE_PRICE {
             return Err(RiskError::Overflow);
@@ -3483,7 +3705,10 @@ impl RiskEngine {
         // Step 6: compute y using pre-conversion haircut (spec §7.4).
         // Because x_req > 0 implies pnl_matured_pos_tot > 0, h_den is strictly positive.
         let (h_num, h_den) = self.haircut_ratio();
-        assert!(h_den > 0, "convert_released_pnl_not_atomic: h_den must be > 0 when x_req > 0");
+        assert!(
+            h_den > 0,
+            "convert_released_pnl_not_atomic: h_den must be > 0 when x_req > 0"
+        );
         let y: u128 = wide_mul_div_floor_u128(x_req, h_num, h_den);
 
         // Step 7: consume_released_pnl(i, x_req)
@@ -3499,7 +3724,11 @@ impl RiskEngine {
         // Step 10: require maintenance healthy if still has position
         let eff = self.effective_pos_q(idx as usize);
         if eff != 0 {
-            if !self.is_above_maintenance_margin(&self.accounts[idx as usize], idx as usize, oracle_price) {
+            if !self.is_above_maintenance_margin(
+                &self.accounts[idx as usize],
+                idx as usize,
+                oracle_price,
+            ) {
                 return Err(RiskError::Undercollateralized);
             }
         }
@@ -3516,8 +3745,14 @@ impl RiskEngine {
     // close_account_not_atomic
     // ========================================================================
 
-    pub fn close_account_not_atomic(&mut self, idx: u16, now_slot: u64, oracle_price: u64, funding_rate: i64) -> Result<u128> {
-                Self::validate_funding_rate(funding_rate)?;
+    pub fn close_account_not_atomic(
+        &mut self,
+        idx: u16,
+        now_slot: u64,
+        oracle_price: u64,
+        funding_rate: i64,
+    ) -> Result<u128> {
+        Self::validate_funding_rate(funding_rate)?;
 
         if idx as usize >= MAX_ACCOUNTS || !self.is_used(idx as usize) {
             return Err(RiskError::AccountNotFound);
@@ -3580,7 +3815,11 @@ impl RiskEngine {
     ///
     /// Skips accrue_market_to (market is frozen). Handles both same-epoch
     /// and epoch-mismatch accounts.
-    pub fn force_close_resolved_not_atomic(&mut self, idx: u16, resolved_slot: u64) -> Result<u128> {
+    pub fn force_close_resolved_not_atomic(
+        &mut self,
+        idx: u16,
+        resolved_slot: u64,
+    ) -> Result<u128> {
         if idx as usize >= MAX_ACCOUNTS || !self.is_used(idx as usize) {
             return Err(RiskError::AccountNotFound);
         }
@@ -3620,7 +3859,9 @@ impl RiskEngine {
             let pnl_delta = wide_signed_mul_div_floor_from_k_pair(abs_basis, k_snap, k_end, den);
 
             // Phase 1b: VALIDATE (check all fallible ops before mutating)
-            let new_pnl = self.accounts[i].pnl.checked_add(pnl_delta)
+            let new_pnl = self.accounts[i]
+                .pnl
+                .checked_add(pnl_delta)
                 .ok_or(RiskError::Overflow)?;
             if new_pnl == i128::MIN {
                 return Err(RiskError::Overflow);
@@ -3671,8 +3912,7 @@ impl RiskEngine {
             // as attach_effective_position detach path, spec §4.5/§4.6)
             if epoch_snap == epoch_side && a_basis != 0 {
                 let a_side_val = self.get_a_side(side);
-                let product = U256::from_u128(abs_basis)
-                    .checked_mul(U256::from_u128(a_side_val));
+                let product = U256::from_u128(abs_basis).checked_mul(U256::from_u128(a_side_val));
                 if let Some(p) = product {
                     let rem = p.checked_rem(U256::from_u128(a_basis));
                     if let Some(r) = rem {
@@ -3714,7 +3954,9 @@ impl RiskEngine {
             let released = self.released_pos(i);
             if released > 0 {
                 let (h_num, h_den) = self.haircut_ratio();
-                let y = if h_den == 0 { released } else {
+                let y = if h_den == 0 {
+                    released
+                } else {
                     wide_mul_div_floor_u128(released, h_num, h_den)
                 };
                 self.consume_released_pnl(i, released);
@@ -3901,7 +4143,8 @@ impl RiskEngine {
     }
 
     fn require_recent_full_sweep(&self, now_slot: u64) -> Result<()> {
-        if now_slot.saturating_sub(self.last_full_sweep_start_slot) > self.max_crank_staleness_slots {
+        if now_slot.saturating_sub(self.last_full_sweep_start_slot) > self.max_crank_staleness_slots
+        {
             return Err(RiskError::Unauthorized);
         }
         Ok(())
@@ -3917,12 +4160,19 @@ impl RiskEngine {
             return Err(RiskError::Overflow);
         }
         // Validate-then-mutate: all checks before any state change
-        let new_vault = self.vault.get().checked_add(amount)
+        let new_vault = self
+            .vault
+            .get()
+            .checked_add(amount)
             .ok_or(RiskError::Overflow)?;
         if new_vault > MAX_VAULT_TVL {
             return Err(RiskError::Overflow);
         }
-        let new_ins = self.insurance_fund.balance.get().checked_add(amount)
+        let new_ins = self
+            .insurance_fund
+            .balance
+            .get()
+            .checked_add(amount)
             .ok_or(RiskError::Overflow)?;
         // All checks passed — commit
         self.current_slot = now_slot;
@@ -3955,14 +4205,22 @@ impl RiskEngine {
         if capped > i128::MAX as u128 {
             return Err(RiskError::Overflow);
         }
-        let new_vault = self.vault.get().checked_add(capped)
+        let new_vault = self
+            .vault
+            .get()
+            .checked_add(capped)
             .ok_or(RiskError::Overflow)?;
         if new_vault > MAX_VAULT_TVL {
             return Err(RiskError::Overflow);
         }
-        let new_ins = self.insurance_fund.balance.get().checked_add(capped)
+        let new_ins = self
+            .insurance_fund
+            .balance
+            .get()
+            .checked_add(capped)
             .ok_or(RiskError::Overflow)?;
-        let new_credits = self.accounts[idx as usize].fee_credits
+        let new_credits = self.accounts[idx as usize]
+            .fee_credits
             .checked_add(capped as i128)
             .ok_or(RiskError::Overflow)?;
         // All checks passed — commit state
@@ -4054,7 +4312,8 @@ pub fn checked_u128_mul_i128(a: u128, b: i128) -> Result<i128> {
         b.unsigned_abs()
     };
     // a * abs_b may overflow u128, use wide arithmetic
-    let product = U256::from_u128(a).checked_mul(U256::from_u128(abs_b))
+    let product = U256::from_u128(a)
+        .checked_mul(U256::from_u128(abs_b))
         .ok_or(RiskError::Overflow)?;
     // Bound to i128::MAX magnitude for both signs. Excludes i128::MIN (which is
     // forbidden throughout the engine) and avoids -(i128::MIN) negate panic.
@@ -4104,9 +4363,7 @@ pub fn compute_trade_pnl(size_q: i128, price_diff: i128) -> Result<i128> {
         // Bound to i128::MAX magnitude to avoid -(i128::MIN) negate panic.
         // i128::MIN is forbidden throughout the engine.
         match mag.try_into_u128() {
-            Some(v) if v <= i128::MAX as u128 => {
-                Ok(-(v as i128))
-            }
+            Some(v) if v <= i128::MAX as u128 => Ok(-(v as i128)),
             _ => Err(RiskError::Overflow),
         }
     } else {
@@ -4116,5 +4373,3 @@ pub fn compute_trade_pnl(size_q: i128, price_diff: i128) -> Result<i128> {
         }
     }
 }
-
-
