@@ -1,117 +1,241 @@
-# Percolator
+# percli
 
-**EDUCATIONAL RESEARCH PROJECT — NOT PRODUCTION READY. NOT AUDITED. Do NOT use with real funds.**
+CLI toolkit for the [Percolator](https://github.com/aeyakovenko/percolator) risk engine — simulate, test, and operate perp markets on Solana.
 
-A predictable alternative to ADL queues.
+> **Research software — not audited, not production-ready. Do not use with real funds.**
 
-If you want the `xy = k` of perpetual futures risk engines -- something you can reason about, audit, and run without human intervention -- the cleanest move is simple: stop treating profit like money. Treat it like what it really is in a stressed exchange: a junior claim on a shared balance sheet.
-
-> No user can ever withdraw more value than actually exists on the exchange balance sheet.
-
-## Two Problems, Two Mechanisms
-
-A perp exchange has two fairness problems:
-
-1. **Exit fairness:** when the vault is stressed, who gets paid and how much?
-2. **Overhang clearing:** when positions go bankrupt, how does the opposing side absorb the residual without deadlocking the market?
-
-Percolator solves them with two independent mechanisms that compose cleanly:
-
-- **H** (the haircut ratio) keeps all exits fair.
-- **A/K** (the lazy side indices) keeps all residual overhang clearing fair, and guarantees markets always return to healthy.
-
----
-
-## H: Fair Exits
-
-Capital is senior. Profit is junior. A single global ratio determines how much profit is real.
-
-```
-Residual  = max(0, V - C_tot - I)
-
-              min(Residual, PNL_matured_pos_tot)
-    h     =  ----------------------------------
-                    PNL_matured_pos_tot
-```
-
-If fully backed, `h = 1`. If stressed, `h < 1`. Every profitable account sees the same fraction of its *released* profit:
-
-```
-ReleasedPos_i   = max(PNL_i, 0) - R_i
-effective_pnl_i = floor(ReleasedPos_i * h)
-```
-
-Fresh profit sits in a per-account reserve `R_i` and converts to released (matured) profit through a warmup period. Only matured profit enters the haircut denominator (`PNL_matured_pos_tot`) and the per-account effective PnL. This is the core oracle-manipulation defense — an attacker who spikes a price sees their unrealized gain locked in `R_i`, excluded from both the ratio and their withdrawable amount, until the warmup window passes.
-
-No rankings, no queue priority, no first-come advantage. The floor rounding is conservative — the sum of all effective PnL never exceeds what exists in the vault.
-
-When the system is stressed, `h` falls and less converts. When losses settle or buffers recover, `h` rises. Self-healing.
-
-Flat accounts are always protected — `h` only gates profit extraction, never touches deposited capital.
-
----
-
-## A/K: Fair Overhang Clearing
-
-When a leveraged account goes bankrupt, two things need to happen: remove the position quantity from open interest, and distribute any uncovered deficit across the opposing side.
-
-Traditional ADL queues pick specific counterparties and force-close them. Percolator replaces the queue with two global coefficients per side:
-
-- **A** scales everyone's effective position equally.
-- **K** accumulates all PnL events (mark, funding, deficit socialization) into one index.
-
-```
-effective_pos(i) = floor(basis_i * A / a_basis_i)
-pnl_delta(i)     = floor(|basis_i| * (K - k_snap_i) / (a_basis_i * POS_SCALE))
-```
-
-When a liquidation reduces OI, `A` decreases — every account on that side shrinks by the same ratio. When a deficit is socialized, `K` shifts — every account absorbs the same per-unit loss.
-
-No account is singled out. Settlement is O(1) per account and order-independent.
-
-### Markets Always Return to Healthy
-
-A/K guarantees forward progress through a deterministic cycle:
-
-**DrainOnly** — when `A` drops below a precision threshold, no new OI can be added. Positions can only close.
-
-**ResetPending** — when OI reaches zero, the engine snapshots `K`, increments the epoch, and resets `A` back to 1. Remaining accounts settle their residual PnL exactly once when next touched.
-
-**Normal** — once all stale accounts have settled and OI is confirmed zero, the side reopens for trading with full precision.
-
-No admin intervention. No governance vote. The state machine always makes progress.
-
----
-
-## How They Compose
-
-| | H | A/K |
-|---|---|---|
-| **Solves** | Exit fairness | Overhang clearing |
-| **Math** | Pro-rata profit scaling | Pro-rata position/deficit scaling |
-| **Triggered by** | Withdrawal or conversion | Bankrupt liquidation |
-| **Recovery** | Automatic as Residual improves | Deterministic three-phase reset |
-
-Together:
-- No user can withdraw more than exists.
-- No user is singled out for forced closure.
-- Markets always recover.
-- Flat accounts keep their deposits.
-
-A/K fairness is exact for open-position economics. H fairness is exact only for the currently stored realized claim set, not for the economically "true" claim set you would get after globally cranking everyone.
-
----
-
-## Open Source
-
-Fork it, test it, send bug reports. Percolator is open research under Apache-2.0.
+## Install
 
 ```bash
-cargo install --locked kani-verifier
-cargo kani setup
-cargo kani
+cargo install percli
 ```
 
-## References
+With on-chain Solana commands:
 
-- Tarun Chitra, *Autodeleveraging: Impossibilities and Optimization*, arXiv:2512.01112, 2025. https://arxiv.org/abs/2512.01112
+```bash
+cargo install percli --features chain
+```
+
+## Quick Start
+
+No setup required — generate a scenario, run it, and inspect the output:
+
+```bash
+# Generate a starter scenario
+percli init --template basic --output demo.toml
+
+# Run the simulation
+percli sim demo.toml
+
+# Run with verbose deltas
+percli sim demo.toml --verbose
+
+# Output as JSON (for scripts and pipelines)
+percli sim demo.toml --format json
+```
+
+## Commands
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `sim` | Run a TOML scenario file | `percli sim scenario.toml --verbose` |
+| `step` | Execute a single operation on saved state | `percli step --state engine.json deposit alice 100000` |
+| `query` | Read-only queries on engine state | `percli query --state engine.json vault` |
+| `inspect` | Validate a scenario without running it | `percli inspect scenario.toml` |
+| `init` | Generate a scenario template | `percli init --template liquidation` |
+| `agent` | Run an external process as a trading agent | `percli agent run --config agent.toml` |
+| `chain` | Interact with on-chain Solana program | `percli chain deploy` |
+| `completions` | Generate shell completions | `percli completions zsh` |
+
+### Simulation Options
+
+```bash
+# Step-by-step — print state after each operation
+percli sim scenario.toml --step-by-step
+
+# Override parameters without editing the file
+percli sim scenario.toml --override maintenance_margin_bps=300
+
+# Disable conservation checks
+percli sim scenario.toml --no-check-conservation
+```
+
+### Interactive State Management
+
+Build up engine state incrementally with `step` and inspect it with `query`:
+
+```bash
+# Initialize state with deposits
+percli step --state engine.json deposit alice 100000
+percli step --state engine.json deposit bob 100000
+
+# Update oracle and execute a trade
+percli step --state engine.json crank --oracle 1000 --slot 1
+percli step --state engine.json trade alice bob 50 --price 1000
+
+# Query the result
+percli query --state engine.json vault
+percli query --state engine.json equity --account alice
+percli query --state engine.json summary --format json
+```
+
+Available query metrics: `summary`, `vault`, `haircut`, `conservation`, `accounts`, `equity`, `margin`, `position`.
+
+## Scenarios
+
+Scenarios are TOML files that define market parameters and a sequence of operations:
+
+```toml
+[meta]
+name = "Basic Two-Party Trade"
+
+[params]
+maintenance_margin_bps = 500    # 5%
+initial_margin_bps = 1000       # 10%
+
+[market]
+initial_oracle_price = 1000
+
+[[steps]]
+action = "deposit"
+account = "alice"
+amount = 100_000
+
+[[steps]]
+action = "trade"
+long = "alice"
+short = "bob"
+size = 50
+price = 1000
+
+[[steps]]
+action = "assert"
+condition = "conservation"
+```
+
+### Bundled Scenarios
+
+| Scenario | What it tests |
+|----------|---------------|
+| `basic-trade.toml` | Two-party trade, 10% price move, equity changes |
+| `liquidation-cascade.toml` | High-leverage position, 50% crash, cascading liquidation |
+| `haircut-stress.toml` | Multiple traders, extreme price move, haircut activation |
+| `insurance-depletion.toml` | Catastrophic loss, insurance absorption, conservation proof |
+| `funding-drift.toml` | Funding rate impact over 500 slots with steady price |
+
+Run all bundled scenarios:
+
+```bash
+for f in scenarios/*.toml; do percli sim "$f"; done
+```
+
+## Agent Mode
+
+Spawn any process (Python, Node, Bash) as a trading agent. percli feeds it NDJSON tick data with full engine snapshots; the agent responds with actions.
+
+```bash
+# Generate a starter agent config
+percli agent init --output agent.toml
+
+# Run the agent
+percli agent run --config agent.toml
+
+# Dry run — validate config without spawning the process
+percli agent run --config agent.toml --dry-run
+```
+
+### Example: Liquidation Bot (Python)
+
+```python
+import sys, json
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    if msg["type"] == "done":
+        break
+    if msg["type"] != "tick":
+        continue
+
+    actions = []
+    for acct in msg["snapshot"]["accounts"]:
+        if not acct["above_maintenance_margin"] and acct["effective_position_q"] != 0:
+            actions.append({"op": "liquidate", "account": acct["name"]})
+
+    print(json.dumps({"actions": actions}), flush=True)
+```
+
+### Protocol
+
+Agents communicate via NDJSON on stdin/stdout:
+
+1. **Init** — `{"type": "init", "params": {...}, "accounts": [...], "snapshot": {...}}`
+2. **Tick** (per price update) — `{"type": "tick", "tick": 1, "oracle_price": 1050, "snapshot": {...}}`
+3. **Response** (agent → percli) — `{"actions": [{"op": "liquidate", "account": "alice"}, ...]}`
+4. **Done** — `{"type": "done", "ticks": 100, "elapsed_s": 1.2}`
+
+Available actions: `deposit`, `withdraw`, `trade`, `liquidate`, `settle`, `noop`.
+
+Price feeds can be inline TOML arrays, CSV files, or piped via stdin for live data.
+
+## On-Chain (Solana)
+
+The `chain` feature adds commands for interacting with a deployed Percolator market on Solana.
+
+```bash
+# Deploy a new market
+percli chain deploy
+
+# Deposit, trade, and crank
+percli chain deposit --idx 0 --amount 100000
+percli chain trade --a 0 --b 1 --size 100 --price 1000
+percli chain crank --oracle 1050
+
+# Liquidate and settle
+percli chain liquidate --idx 0
+percli chain settle --idx 1
+
+# Query on-chain state
+percli chain query market
+percli chain query 0   # query account at index 0
+```
+
+Global options: `--rpc <url>`, `--keypair <path>`, `--program <pubkey>`.
+
+The on-chain program (`percli-program`) is an Anchor program that wraps the Percolator engine in a Solana PDA. See [`Anchor.toml`](Anchor.toml) for deployment config.
+
+## What is Percolator?
+
+[Percolator](https://github.com/aeyakovenko/percolator) is a risk engine for perpetual futures that replaces ADL queues with two deterministic mechanisms:
+
+**H (haircut ratio)** — When the vault is stressed, every profitable account sees the same pro-rata scaling on withdrawable profit. No queue priority, no first-come advantage. Capital deposits are always protected.
+
+**A/K (side indices)** — When a leveraged account goes bankrupt, the opposing side absorbs the residual through global position scaling (A) and PnL socialization (K). No account is singled out. Settlement is O(1) per account.
+
+Together: no user can withdraw more than exists, no user is singled out for forced closure, and markets always self-heal through a deterministic three-phase reset — no admin intervention, no governance votes.
+
+See [Tarun Chitra, *Autodeleveraging: Impossibilities and Optimization*](https://arxiv.org/abs/2512.01112) for the theoretical foundation.
+
+## Architecture
+
+```
+kamiyoai/percli (workspace)
+├── src/              # percolator — upstream risk engine (no-std, formally verified)
+├── crates/
+│   ├── percli-core/  # engine wrapper, scenario runner, agent protocol
+│   ├── percli/       # CLI binary (sim, step, query, agent, chain)
+│   ├── percli-chain/ # Solana RPC client commands
+│   ├── percli-program/ # Anchor on-chain program
+│   └── percli-wasm/  # WebAssembly build
+├── scenarios/        # bundled TOML test scenarios
+├── examples/         # agent examples (Python, Bash)
+├── tests/            # upstream Kani formal verification proofs
+└── scripts/          # development utilities
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR guidelines.
+
+## License
+
+Apache-2.0 OR MIT — see [LICENSE](LICENSE).

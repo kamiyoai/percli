@@ -10,7 +10,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
+  core:
+    name: Core (fmt, clippy, test, scenarios)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,22 +20,41 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
-
       - name: Format
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --exclude percli-chain --exclude percli-program -- -D warnings
 
       - name: Test
-        run: cargo test --all
+        run: cargo test --workspace --exclude percli-chain --exclude percli-program
 
       - name: Run bundled scenarios
         run: |
-          cargo build --release
+          cargo build -p percli --release
           for f in scenarios/*.toml; do
             echo "--- $f ---"
-            cargo run --release -- sim "$f"
+            cargo run -p percli --release -- sim "$f"
           done
+
+  chain:
+    name: Chain (Solana / Anchor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libudev-dev
+
+      - name: Build percli with chain feature
+        run: cargo build -p percli --features chain
+
+      - name: Build percli-program
+        run: cargo build -p percli-program
+
+      - name: Clippy (chain crates)
+        run: cargo clippy -p percli-chain -p percli-program -- -D warnings
