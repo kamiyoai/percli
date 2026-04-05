@@ -1,0 +1,71 @@
+# Funding Rate Drift
+# Observe how funding payments flow between longs and shorts over time.
+#
+# Run: percli sim scenarios/funding-drift.toml
+
+[meta]
+name = "Funding Rate Drift"
+description = "Hold positions across multiple slots with a positive funding rate. Watch longs pay shorts."
+
+[params]
+warmup_period_slots = 100
+maintenance_margin_bps = 500
+initial_margin_bps = 1000
+
+[market]
+initial_oracle_price = 1000
+initial_slot = 0
+
+[[steps]]
+action = "deposit"
+account = "alice"
+amount = 200_000
+
+[[steps]]
+action = "deposit"
+account = "bob"
+amount = 200_000
+
+[[steps]]
+action = "crank"
+oracle_price = 1000
+slot = 1
+
+[[steps]]
+action = "trade"
+long = "alice"
+short = "bob"
+size = 100
+price = 1000
+
+# --- Time passes with positive funding ---
+
+[[steps]]
+action = "set_funding_rate"
+rate = 10
+comment = "10 bps/slot funding rate — longs pay shorts"
+
+[[steps]]
+action = "crank"
+oracle_price = 1000
+slot = 100
+comment = "100 slots pass at stable price"
+
+[[steps]]
+action = "query"
+metric = "summary"
+comment = "Observe funding impact on alice (long) and bob (short)"
+
+[[steps]]
+action = "crank"
+oracle_price = 1000
+slot = 500
+comment = "500 slots total — significant funding accumulated"
+
+[[steps]]
+action = "query"
+metric = "summary"
+
+[[steps]]
+action = "assert"
+condition = "conservation"

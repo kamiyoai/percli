@@ -1,0 +1,76 @@
+# Insurance Fund Depletion
+# The tweetable demo. Watch insurance absorb losses, then haircuts kick in.
+#
+# Run: percli sim scenarios/insurance-depletion.toml
+
+[meta]
+name = "Insurance Depletion"
+description = "Catastrophic loss event. Insurance fund absorbs what it can. Haircut socializes the rest. Conservation holds."
+
+[params]
+warmup_period_slots = 10
+maintenance_margin_bps = 500
+initial_margin_bps = 1000
+liquidation_fee_bps = 100
+
+[market]
+initial_oracle_price = 1000
+initial_slot = 0
+
+# --- Fund the exchange ---
+
+[[steps]]
+action = "deposit"
+account = "alice"
+amount = 1_000_000
+
+[[steps]]
+action = "deposit"
+account = "bob"
+amount = 1_000_000
+
+[[steps]]
+action = "crank"
+oracle_price = 1000
+slot = 1
+
+# --- Large leveraged trade ---
+
+[[steps]]
+action = "trade"
+long = "alice"
+short = "bob"
+size = 800
+price = 1000
+comment = "Massive position relative to capital"
+
+# --- Catastrophic price event ---
+
+[[steps]]
+action = "crank"
+oracle_price = 400
+slot = 100
+comment = "Price drops 60% — alice is deeply underwater"
+
+[[steps]]
+action = "query"
+metric = "summary"
+comment = "Pre-liquidation: observe alice below maintenance"
+
+# --- Liquidation ---
+
+[[steps]]
+action = "liquidate"
+account = "alice"
+
+[[steps]]
+action = "query"
+metric = "summary"
+comment = "Post-liquidation: observe insurance fund and haircut"
+
+# --- The guarantee ---
+
+[[steps]]
+action = "assert"
+condition = "conservation"
+comment = "No user can withdraw more than exists. This is the whole point."

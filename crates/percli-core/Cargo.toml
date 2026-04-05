@@ -1,0 +1,25 @@
+[package]
+name = "percli-core"
+description = "Offline simulation adapter for the Percolator risk engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+percolator = { path = "../..", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+bytemuck = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+proptest = "1"
+
+[features]
+default = ["test"]
+test = ["percolator/test"]
+solana = ["bytemuck"]
