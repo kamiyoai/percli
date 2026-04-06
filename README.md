@@ -2,7 +2,7 @@
 
 CLI toolkit for the [Percolator](https://github.com/aeyakovenko/percolator) risk engine — simulate, test, and operate perp markets on Solana.
 
-> **This software has not been audited by a third-party security firm. Use at your own risk. The authors accept no liability for loss of funds. A professional audit is strongly recommended before deploying with real assets.**
+> **This software has not been audited by a third-party security firm. Use at your own risk. The authors accept no liability for loss of funds.**
 
 ## Install
 
