@@ -23,5 +23,5 @@ idl-build = ["anchor-lang/idl-build"]
 
 [dependencies]
 anchor-lang = "1.0"
-percli-core = { version = "0.4.0", path = "../percli-core", features = ["solana"] }
+percli-core = { version = "0.5.0", path = "../percli-core", features = ["solana"] }
 bytemuck = { version = "1", features = ["derive"] }
