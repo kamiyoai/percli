@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use pyth_sdk_solana::state::{load_price_account, PriceStatus};
 
 use crate::error::{from_risk_error, PercolatorError};
-use crate::state::{engine_from_account_data, MARKET_ACCOUNT_SIZE};
+use crate::state::{engine_from_account_data, header_from_account_data, MARKET_ACCOUNT_SIZE};
 
 /// Maximum age of a Pyth price update before it's considered stale (seconds).
 const MAX_PRICE_AGE_SECS: i64 = 60;
@@ -31,6 +31,17 @@ pub struct Crank<'info> {
 }
 
 pub fn handler(ctx: Context<Crank>, funding_rate: i64) -> Result<()> {
+    // Verify the oracle account matches the one stored in the market header
+    {
+        let data = ctx.accounts.market.try_borrow_data()?;
+        require!(&data[0..8] == b"percmrkt", PercolatorError::AccountNotFound);
+        let header = header_from_account_data(&data)?;
+        require!(
+            header.oracle == ctx.accounts.oracle.key(),
+            PercolatorError::InvalidOraclePrice
+        );
+    }
+
     // Read oracle price from Pyth — deserialize directly from raw bytes
     // to avoid solana-pubkey version mismatch between pyth-sdk-solana and anchor-lang 1.0.
     let oracle_data = ctx.accounts.oracle.data.borrow();

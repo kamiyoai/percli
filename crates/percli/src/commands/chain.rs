@@ -7,7 +7,17 @@ use solana_sdk::pubkey::Pubkey;
 #[derive(Subcommand)]
 pub enum ChainCommand {
     /// Deploy a new market (initialize_market)
-    Deploy,
+    Deploy {
+        /// SPL token mint address (e.g. USDC)
+        #[arg(long)]
+        mint: Pubkey,
+        /// Pyth price feed account address
+        #[arg(long)]
+        oracle: Pubkey,
+        /// Initial oracle price
+        #[arg(long, default_value = "1000")]
+        init_price: u64,
+    },
     /// Deposit to an account slot
     Deposit {
         /// Account slot index
@@ -111,7 +121,9 @@ pub fn run(
     let config = ChainConfig::new(rpc, keypair, program)?;
 
     match cmd {
-        ChainCommand::Deploy => percli_chain::commands::deploy::run(&config),
+        ChainCommand::Deploy { mint, oracle, init_price } => {
+            percli_chain::commands::deploy::run(&config, &mint, &oracle, init_price)
+        }
         ChainCommand::Deposit { idx, amount, mint, token_account } => {
             percli_chain::commands::deposit::run(&config, idx, amount, &mint, &token_account)
         }

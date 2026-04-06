@@ -1,12 +1,19 @@
 use anyhow::{bail, Result};
+use solana_sdk::pubkey::Pubkey;
 
 use crate::config::ChainConfig;
 use crate::ix::{self, InitializeMarketArgs, RiskParamsInput};
 use crate::rpc::ChainRpc;
 
-pub fn run(config: &ChainConfig) -> Result<()> {
+pub fn run(
+    config: &ChainConfig,
+    mint: &Pubkey,
+    oracle: &Pubkey,
+    init_oracle_price: u64,
+) -> Result<()> {
     let rpc = ChainRpc::new(&config.rpc_url);
     let (market_pda, _bump) = config.market_pda();
+    let (vault_pda, _) = config.vault_pda();
 
     if rpc.account_exists(&market_pda)? {
         bail!("Market already exists at {market_pda}");
@@ -16,35 +23,46 @@ pub fn run(config: &ChainConfig) -> Result<()> {
 
     // Default risk params for devnet testing
     let params = RiskParamsInput {
+        warmup_period_slots: 0,
         maintenance_margin_bps: 500,
         initial_margin_bps: 1000,
-        liquidation_fee_bps: 50,
-        insurance_fee_bps: 25,
-        adl_threshold_bps: 200,
-        max_leverage_q: 20,
-        min_order_size_q: 1,
-        tick_size: 1,
-        max_oi_imbalance_q: 1_000_000,
-        haircut_start_bps: 100,
-        haircut_end_bps: 500,
-        haircut_maturity_slots: 1000,
-        matured_haircut_bps: 300,
+        trading_fee_bps: 10,
         max_accounts: 4096,
+        new_account_fee: 0,
+        maintenance_fee_per_slot: 0,
+        max_crank_staleness_slots: 100,
+        liquidation_fee_bps: 50,
+        liquidation_fee_cap: 1_000_000,
+        min_liquidation_abs: 100,
+        min_initial_deposit: 1000,
         min_nonzero_mm_req: 100,
         min_nonzero_im_req: 200,
+        insurance_floor: 0,
     };
 
     let args = InitializeMarketArgs {
         init_slot: slot,
-        init_oracle_price: 1000, // $10.00 default oracle price
+        init_oracle_price,
         params,
     };
 
-    let ix = ix::initialize_market_ix(&config.program_id, &market_pda, &config.authority(), args);
+    let ix = ix::initialize_market_ix(
+        &config.program_id,
+        &market_pda,
+        &config.authority(),
+        mint,
+        &vault_pda,
+        oracle,
+        &spl_token::id(),
+        args,
+    );
 
     println!("Deploying market...");
     println!("  Authority: {}", config.authority());
     println!("  Market PDA: {market_pda}");
+    println!("  Vault PDA:  {vault_pda}");
+    println!("  Mint:       {mint}");
+    println!("  Oracle:     {oracle}");
     println!("  RPC: {}", config.rpc_url);
 
     let sig = rpc.send_tx(&[ix], &config.keypair)?;

@@ -4,8 +4,8 @@ use percli_core::RiskEngine;
 /// Discriminator expected at bytes 0..8 of the market account.
 const MARKET_DISCRIMINATOR: &[u8; 8] = b"percmrkt";
 
-/// MarketHeader size (authority: 32 + bump: 1 + padding: 7 = 40).
-const HEADER_SIZE: usize = 40;
+/// MarketHeader size (authority: 32 + mint: 32 + oracle: 32 + bump: 1 + vault_bump: 1 + padding: 6 = 104).
+const HEADER_SIZE: usize = 104;
 
 /// Offset where RiskEngine data begins in the account.
 const ENGINE_OFFSET: usize = 8 + HEADER_SIZE;

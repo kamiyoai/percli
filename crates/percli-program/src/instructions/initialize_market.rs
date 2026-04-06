@@ -34,6 +34,9 @@ pub struct InitializeMarket<'info> {
     )]
     pub vault: Account<'info, TokenAccount>,
 
+    /// CHECK: Pyth price feed for this market. Stored in header; validated on crank.
+    pub oracle: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -53,6 +56,7 @@ pub fn handler(
     let header = MarketHeader {
         authority: ctx.accounts.authority.key(),
         mint: ctx.accounts.mint.key(),
+        oracle: ctx.accounts.oracle.key(),
         bump: ctx.bumps.market,
         vault_bump: ctx.bumps.vault,
         _padding: [0; 6],

@@ -42,22 +42,21 @@ pub struct InitializeMarketArgs {
 
 #[derive(BorshSerialize)]
 pub struct RiskParamsInput {
+    pub warmup_period_slots: u64,
     pub maintenance_margin_bps: u64,
     pub initial_margin_bps: u64,
-    pub liquidation_fee_bps: u64,
-    pub insurance_fee_bps: u64,
-    pub adl_threshold_bps: u64,
-    pub max_leverage_q: u64,
-    pub min_order_size_q: u64,
-    pub tick_size: u64,
-    pub max_oi_imbalance_q: u64,
-    pub haircut_start_bps: u64,
-    pub haircut_end_bps: u64,
-    pub haircut_maturity_slots: u64,
-    pub matured_haircut_bps: u64,
+    pub trading_fee_bps: u64,
     pub max_accounts: u64,
-    pub min_nonzero_mm_req: u128,
-    pub min_nonzero_im_req: u128,
+    pub new_account_fee: u64,
+    pub maintenance_fee_per_slot: u64,
+    pub max_crank_staleness_slots: u64,
+    pub liquidation_fee_bps: u64,
+    pub liquidation_fee_cap: u64,
+    pub min_liquidation_abs: u64,
+    pub min_initial_deposit: u64,
+    pub min_nonzero_mm_req: u64,
+    pub min_nonzero_im_req: u64,
+    pub insurance_floor: u64,
 }
 
 #[derive(BorshSerialize)]
@@ -111,6 +110,10 @@ pub fn initialize_market_ix(
     program_id: &Pubkey,
     market: &Pubkey,
     authority: &Pubkey,
+    mint: &Pubkey,
+    vault: &Pubkey,
+    oracle: &Pubkey,
+    token_program: &Pubkey,
     args: InitializeMarketArgs,
 ) -> Instruction {
     build_ix(
@@ -118,8 +121,12 @@ pub fn initialize_market_ix(
         "initialize_market",
         args,
         vec![
-            AccountMeta::new(*market, false),
             AccountMeta::new(*authority, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new(*vault, false),
+            AccountMeta::new_readonly(*oracle, false),
+            AccountMeta::new_readonly(*token_program, false),
             AccountMeta::new_readonly(system_program::id(), false),
         ],
     )
