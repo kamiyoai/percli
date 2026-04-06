@@ -12,6 +12,8 @@ pub struct MarketHeader {
     pub mint: Pubkey,
     /// Pyth price feed account for this market's oracle.
     pub oracle: Pubkey,
+    /// Matcher authority — the only signer allowed to submit trades.
+    pub matcher: Pubkey,
     /// Bump seed for the Market PDA.
     pub bump: u8,
     /// Bump seed for the vault token account PDA.
@@ -21,7 +23,7 @@ pub struct MarketHeader {
 }
 
 impl MarketHeader {
-    pub const SIZE: usize = 32 + 32 + 32 + 1 + 1 + 6; // 104 bytes
+    pub const SIZE: usize = 32 + 32 + 32 + 32 + 1 + 1 + 6; // 136 bytes
 }
 
 /// Total account size: discriminator + header + engine

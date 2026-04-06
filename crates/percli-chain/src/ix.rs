@@ -113,6 +113,7 @@ pub fn initialize_market_ix(
     mint: &Pubkey,
     vault: &Pubkey,
     oracle: &Pubkey,
+    matcher: &Pubkey,
     token_program: &Pubkey,
     args: InitializeMarketArgs,
 ) -> Instruction {
@@ -126,6 +127,7 @@ pub fn initialize_market_ix(
             AccountMeta::new_readonly(*mint, false),
             AccountMeta::new(*vault, false),
             AccountMeta::new_readonly(*oracle, false),
+            AccountMeta::new_readonly(*matcher, false),
             AccountMeta::new_readonly(*token_program, false),
             AccountMeta::new_readonly(system_program::id(), false),
         ],

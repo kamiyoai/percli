@@ -63,6 +63,14 @@ pub fn handler(
     require!(header.mint == ctx.accounts.mint.key(), PercolatorError::Unauthorized);
 
     let engine = engine_from_account_data(&mut data);
+
+    // Verify signer owns this account
+    let account_owner = engine.accounts[account_idx as usize].owner;
+    require!(
+        account_owner == ctx.accounts.user.key().to_bytes(),
+        PercolatorError::Unauthorized
+    );
+
     let oracle_price = engine.last_oracle_price;
     let clock = Clock::get()?;
 

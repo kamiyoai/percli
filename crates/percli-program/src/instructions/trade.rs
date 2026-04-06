@@ -1,11 +1,11 @@
 use anchor_lang::prelude::*;
 
 use crate::error::{from_risk_error, PercolatorError};
-use crate::state::{engine_from_account_data, MARKET_ACCOUNT_SIZE};
+use crate::state::{engine_from_account_data, header_from_account_data, MARKET_ACCOUNT_SIZE};
 
 #[derive(Accounts)]
 pub struct Trade<'info> {
-    /// Either both traders sign, or a matcher authority signs on their behalf.
+    /// Matcher authority — must match the matcher stored in the market header.
     pub signer: Signer<'info>,
 
     /// CHECK: Validated via owner, discriminator, and size.
@@ -31,6 +31,13 @@ pub fn handler(
     let mut data = market.try_borrow_mut_data()?;
 
     require!(&data[0..8] == b"percmrkt", PercolatorError::AccountNotFound);
+
+    // Verify signer is the designated matcher authority
+    let header = header_from_account_data(&data)?;
+    require!(
+        header.matcher == ctx.accounts.signer.key(),
+        PercolatorError::Unauthorized
+    );
 
     let engine = engine_from_account_data(&mut data);
     let oracle_price = engine.last_oracle_price;

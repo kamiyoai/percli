@@ -37,6 +37,10 @@ pub struct InitializeMarket<'info> {
     /// CHECK: Pyth price feed for this market. Stored in header; validated on crank.
     pub oracle: UncheckedAccount<'info>,
 
+    /// Matcher authority — the only signer allowed to submit trades.
+    /// CHECK: Stored in header. Can be any pubkey (e.g. a program or multisig).
+    pub matcher: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -57,6 +61,7 @@ pub fn handler(
         authority: ctx.accounts.authority.key(),
         mint: ctx.accounts.mint.key(),
         oracle: ctx.accounts.oracle.key(),
+        matcher: ctx.accounts.matcher.key(),
         bump: ctx.bumps.market,
         vault_bump: ctx.bumps.vault,
         _padding: [0; 6],

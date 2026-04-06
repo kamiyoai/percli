@@ -71,12 +71,25 @@ pub fn handler(ctx: Context<Deposit>, account_idx: u16, amount: u64) -> Result<(
     require!(header.mint == ctx.accounts.mint.key(), PercolatorError::Unauthorized);
 
     let engine = engine_from_account_data(&mut data);
+
+    // If account already exists, verify the signer is the owner
+    let user_key = ctx.accounts.user.key();
+    if engine.is_used(account_idx as usize) {
+        let existing_owner = engine.accounts[account_idx as usize].owner;
+        if existing_owner != [0u8; 32] {
+            require!(existing_owner == user_key.to_bytes(), PercolatorError::Unauthorized);
+        }
+    }
+
     let oracle_price = engine.last_oracle_price;
     let clock = Clock::get()?;
 
     engine
         .deposit(account_idx, amount as u128, oracle_price, clock.slot)
         .map_err(from_risk_error)?;
+
+    // If this was a new account (owner is zero), claim it for the depositor
+    let _ = engine.set_owner(account_idx, user_key.to_bytes());
 
     Ok(())
 }

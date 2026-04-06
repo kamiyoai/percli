@@ -9,6 +9,7 @@ pub fn run(
     config: &ChainConfig,
     mint: &Pubkey,
     oracle: &Pubkey,
+    matcher: &Pubkey,
     init_oracle_price: u64,
 ) -> Result<()> {
     let rpc = ChainRpc::new(&config.rpc_url);
@@ -53,6 +54,7 @@ pub fn run(
         mint,
         &vault_pda,
         oracle,
+        matcher,
         &spl_token::id(),
         args,
     );
@@ -63,6 +65,7 @@ pub fn run(
     println!("  Vault PDA:  {vault_pda}");
     println!("  Mint:       {mint}");
     println!("  Oracle:     {oracle}");
+    println!("  Matcher:    {matcher}");
     println!("  RPC: {}", config.rpc_url);
 
     let sig = rpc.send_tx(&[ix], &config.keypair)?;

@@ -14,6 +14,9 @@ pub enum ChainCommand {
         /// Pyth price feed account address
         #[arg(long)]
         oracle: Pubkey,
+        /// Matcher authority pubkey (only this signer can submit trades)
+        #[arg(long)]
+        matcher: Pubkey,
         /// Initial oracle price
         #[arg(long, default_value = "1000")]
         init_price: u64,
@@ -121,8 +124,8 @@ pub fn run(
     let config = ChainConfig::new(rpc, keypair, program)?;
 
     match cmd {
-        ChainCommand::Deploy { mint, oracle, init_price } => {
-            percli_chain::commands::deploy::run(&config, &mint, &oracle, init_price)
+        ChainCommand::Deploy { mint, oracle, matcher, init_price } => {
+            percli_chain::commands::deploy::run(&config, &mint, &oracle, &matcher, init_price)
         }
         ChainCommand::Deposit { idx, amount, mint, token_account } => {
             percli_chain::commands::deposit::run(&config, idx, amount, &mint, &token_account)

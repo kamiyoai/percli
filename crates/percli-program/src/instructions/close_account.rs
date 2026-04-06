@@ -23,6 +23,14 @@ pub fn handler(ctx: Context<CloseAccount>, account_idx: u16, funding_rate: i64) 
     require!(&data[0..8] == b"percmrkt", PercolatorError::AccountNotFound);
 
     let engine = engine_from_account_data(&mut data);
+
+    // Verify signer owns this account
+    let account_owner = engine.accounts[account_idx as usize].owner;
+    require!(
+        account_owner == ctx.accounts.user.key().to_bytes(),
+        PercolatorError::Unauthorized
+    );
+
     let oracle_price = engine.last_oracle_price;
     let clock = Clock::get()?;
 
