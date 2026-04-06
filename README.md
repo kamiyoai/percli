@@ -2,7 +2,7 @@
 
 CLI toolkit for the [Percolator](https://github.com/aeyakovenko/percolator) risk engine — simulate, test, and operate perp markets on Solana.
 
-> **Research software — not audited, not production-ready. Do not use with real funds.**
+> **This software has not been audited by a third-party security firm. Use at your own risk. The authors accept no liability for loss of funds. A professional audit is strongly recommended before deploying with real assets.**
 
 ## Install
 
@@ -213,14 +213,25 @@ See [`examples/agent-pyth.toml`](examples/agent-pyth.toml) for a complete config
 
 The `chain` feature adds commands for interacting with a deployed Percolator market on Solana.
 
+Deposits and withdrawals move real SPL tokens (e.g. USDC) between user wallets and a PDA-controlled vault. The crank instruction reads oracle prices directly from a [Pyth Network](https://pyth.network/) price feed account on-chain.
+
 ```bash
 # Deploy a new market
 percli chain deploy
 
-# Deposit, trade, and crank
-percli chain deposit --idx 0 --amount 100000
+# Deposit (SPL token transfer from user to vault)
+percli chain deposit --idx 0 --amount 100000 \
+  --mint <MINT_PUBKEY> --token-account <USER_ATA>
+
+# Trade between two accounts
 percli chain trade --a 0 --b 1 --size 100 --price 1000
-percli chain crank --oracle 1050
+
+# Crank — reads price from Pyth oracle on-chain
+percli chain crank --oracle <PYTH_FEED_PUBKEY>
+
+# Withdraw (SPL token transfer from vault to user, margin-checked)
+percli chain withdraw --idx 0 --amount 50000 \
+  --mint <MINT_PUBKEY> --token-account <USER_ATA>
 
 # Liquidate and settle
 percli chain liquidate --idx 0
@@ -233,21 +244,18 @@ percli chain query 0   # query account at index 0
 
 Global options: `--rpc <url>`, `--keypair <path>`, `--program <pubkey>`.
 
-The on-chain program (`percli-program`) is an Anchor program that wraps the Percolator engine in a Solana PDA. See [`Anchor.toml`](Anchor.toml) for deployment config.
+The on-chain program (`percli-program`) is an Anchor 1.0 program that wraps the Percolator engine in a Solana PDA. See [`Anchor.toml`](Anchor.toml) for deployment config.
 
 ## Keeper Bot
 
-The `keeper` command watches an on-chain market and automatically cranks oracle updates and liquidates undercollateralized accounts:
+The `keeper` command watches an on-chain market, cranks Pyth oracle updates, and liquidates undercollateralized accounts:
 
 ```bash
-# Basic keeper with 10s polling interval
-percli keeper --rpc devnet --interval 10
-
-# Keeper with live Pyth oracle feed
-percli keeper --rpc mainnet --pyth-feed H6ARHf6YXhGYeQfUzQNGk6rDNnLBQKrenN712K4AQJEG --interval 5
+# Keeper with Pyth oracle feed (required)
+percli keeper --rpc devnet --pyth-feed <PYTH_FEED_PUBKEY> --interval 10
 ```
 
-The keeper loops: read market state, update oracle if stale, liquidate anyone below maintenance margin, sleep, repeat.
+The keeper loops: read market state, submit crank tx (which reads the Pyth price on-chain), liquidate anyone below maintenance margin, sleep, repeat.
 
 Requires `--features chain`.
 
@@ -284,6 +292,19 @@ kamiyoai/percli (workspace)
 ├── tests/            # upstream Kani formal verification proofs
 └── scripts/          # development utilities
 ```
+
+## Security
+
+The core risk engine (`percolator`) is formally verified with [Kani](https://model-checking.github.io/kani/) proofs and continuously fuzz-tested with [proptest](https://crates.io/crates/proptest). All arithmetic uses checked operations; `#![forbid(unsafe_code)]` is enforced in the engine crate.
+
+The on-chain Anchor program validates:
+- **Account ownership** — market accounts must be owned by the program
+- **Oracle authenticity** — price feeds must be owned by the Pyth v2 program
+- **Discriminator + size checks** — all market accounts are validated before access
+- **SPL token constraints** — mint, owner, and vault PDA seeds are verified by Anchor
+- **Checked price conversion** — Pyth exponent handling uses checked arithmetic with bounded exponent range
+
+**This software has not been audited by a third-party security firm.** If you discover a vulnerability, please report it privately via GitHub Security Advisories rather than opening a public issue.
 
 ## Contributing
 

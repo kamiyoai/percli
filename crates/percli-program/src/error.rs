@@ -30,6 +30,12 @@ pub enum PercolatorError {
     InvalidOraclePrice,
     #[msg("Account index out of range")]
     AccountIndexOutOfRange,
+    #[msg("Oracle price is stale")]
+    StaleOracle,
+    #[msg("Oracle price is negative or zero")]
+    InvalidOraclePriceValue,
+    #[msg("Deposit amount exceeds u64 token limit")]
+    AmountOverflow,
 }
 
 pub fn from_risk_error(e: percli_core::RiskError) -> Error {

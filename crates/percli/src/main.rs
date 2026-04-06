@@ -152,9 +152,9 @@ enum Commands {
         /// Poll interval in seconds
         #[arg(long, default_value = "10")]
         interval: u64,
-        /// Pyth price feed account pubkey for live oracle updates
+        /// Pyth price feed account pubkey (required for oracle reads)
         #[arg(long)]
-        pyth_feed: Option<String>,
+        pyth_feed: String,
     },
     /// Generate shell completions
     Completions {
@@ -307,7 +307,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 keypair.as_deref(),
                 program.as_deref(),
             )?;
-            commands::keeper::run(&config, interval, pyth_feed.as_deref())
+            commands::keeper::run(&config, interval, &pyth_feed)
         }
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();

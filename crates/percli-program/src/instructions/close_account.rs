@@ -7,9 +7,10 @@ use crate::state::{engine_from_account_data, MARKET_ACCOUNT_SIZE};
 pub struct CloseAccount<'info> {
     pub user: Signer<'info>,
 
-    /// CHECK: Validated via discriminator and size.
+    /// CHECK: Validated via owner, discriminator, and size.
     #[account(
         mut,
+        owner = crate::ID @ PercolatorError::AccountNotFound,
         constraint = market.data_len() == MARKET_ACCOUNT_SIZE @ PercolatorError::AccountNotFound,
     )]
     pub market: UncheckedAccount<'info>,

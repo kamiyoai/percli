@@ -23,14 +23,14 @@ pub mod percli_program {
         instructions::initialize_market::handler(ctx, init_slot, init_oracle_price, params)
     }
 
-    pub fn deposit(ctx: Context<Deposit>, account_idx: u16, amount: u128) -> Result<()> {
+    pub fn deposit(ctx: Context<Deposit>, account_idx: u16, amount: u64) -> Result<()> {
         instructions::deposit::handler(ctx, account_idx, amount)
     }
 
     pub fn withdraw(
         ctx: Context<Withdraw>,
         account_idx: u16,
-        amount: u128,
+        amount: u64,
         funding_rate: i64,
     ) -> Result<()> {
         instructions::withdraw::handler(ctx, account_idx, amount, funding_rate)
@@ -47,8 +47,8 @@ pub mod percli_program {
         instructions::trade::handler(ctx, account_a, account_b, size_q, exec_price, funding_rate)
     }
 
-    pub fn crank(ctx: Context<Crank>, oracle_price: u64, funding_rate: i64) -> Result<()> {
-        instructions::crank::handler(ctx, oracle_price, funding_rate)
+    pub fn crank(ctx: Context<Crank>, funding_rate: i64) -> Result<()> {
+        instructions::crank::handler(ctx, funding_rate)
     }
 
     pub fn liquidate(ctx: Context<Liquidate>, account_idx: u16, funding_rate: i64) -> Result<bool> {

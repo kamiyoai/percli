@@ -9,9 +9,10 @@ pub struct Liquidate<'info> {
     /// Permissionless — anyone can liquidate.
     pub liquidator: Signer<'info>,
 
-    /// CHECK: Validated via discriminator and size.
+    /// CHECK: Validated via owner, discriminator, and size.
     #[account(
         mut,
+        owner = crate::ID @ PercolatorError::AccountNotFound,
         constraint = market.data_len() == MARKET_ACCOUNT_SIZE @ PercolatorError::AccountNotFound,
     )]
     pub market: UncheckedAccount<'info>,

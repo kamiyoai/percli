@@ -63,13 +63,13 @@ pub struct RiskParamsInput {
 #[derive(BorshSerialize)]
 pub struct DepositArgs {
     pub account_idx: u16,
-    pub amount: u128,
+    pub amount: u64,
 }
 
 #[derive(BorshSerialize)]
 pub struct WithdrawArgs {
     pub account_idx: u16,
-    pub amount: u128,
+    pub amount: u64,
     pub funding_rate: i64,
 }
 
@@ -84,7 +84,6 @@ pub struct TradeArgs {
 
 #[derive(BorshSerialize)]
 pub struct CrankArgs {
-    pub oracle_price: u64,
     pub funding_rate: i64,
 }
 
@@ -130,6 +129,10 @@ pub fn deposit_ix(
     program_id: &Pubkey,
     market: &Pubkey,
     user: &Pubkey,
+    mint: &Pubkey,
+    user_token_account: &Pubkey,
+    vault: &Pubkey,
+    token_program: &Pubkey,
     args: DepositArgs,
 ) -> Instruction {
     build_ix(
@@ -137,8 +140,12 @@ pub fn deposit_ix(
         "deposit",
         args,
         vec![
+            AccountMeta::new(*user, true),
             AccountMeta::new(*market, false),
-            AccountMeta::new_readonly(*user, true),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new(*user_token_account, false),
+            AccountMeta::new(*vault, false),
+            AccountMeta::new_readonly(*token_program, false),
         ],
     )
 }
@@ -147,6 +154,10 @@ pub fn withdraw_ix(
     program_id: &Pubkey,
     market: &Pubkey,
     user: &Pubkey,
+    mint: &Pubkey,
+    user_token_account: &Pubkey,
+    vault: &Pubkey,
+    token_program: &Pubkey,
     args: WithdrawArgs,
 ) -> Instruction {
     build_ix(
@@ -154,8 +165,12 @@ pub fn withdraw_ix(
         "withdraw",
         args,
         vec![
+            AccountMeta::new(*user, true),
             AccountMeta::new(*market, false),
-            AccountMeta::new_readonly(*user, true),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new(*user_token_account, false),
+            AccountMeta::new(*vault, false),
+            AccountMeta::new_readonly(*token_program, false),
         ],
     )
 }
@@ -181,6 +196,7 @@ pub fn crank_ix(
     program_id: &Pubkey,
     market: &Pubkey,
     cranker: &Pubkey,
+    oracle: &Pubkey,
     args: CrankArgs,
 ) -> Instruction {
     build_ix(
@@ -188,8 +204,9 @@ pub fn crank_ix(
         "crank",
         args,
         vec![
-            AccountMeta::new(*market, false),
             AccountMeta::new_readonly(*cranker, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*oracle, false),
         ],
     )
 }

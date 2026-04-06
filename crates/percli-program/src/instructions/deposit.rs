@@ -1,39 +1,82 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token::{transfer_checked, Mint, Token, TokenAccount, TransferChecked};
 
 use crate::error::{from_risk_error, PercolatorError};
-use crate::state::{engine_from_account_data, MARKET_ACCOUNT_SIZE};
+use crate::state::{engine_from_account_data, header_from_account_data, MARKET_ACCOUNT_SIZE};
 
 #[derive(Accounts)]
 pub struct Deposit<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    /// CHECK: Validated via discriminator, PDA seeds, and size.
+    /// CHECK: Validated via owner, discriminator, and size.
     #[account(
         mut,
+        owner = crate::ID @ PercolatorError::AccountNotFound,
         constraint = market.data_len() == MARKET_ACCOUNT_SIZE @ PercolatorError::AccountNotFound,
     )]
     pub market: UncheckedAccount<'info>,
 
-    pub system_program: Program<'info, System>,
+    /// The collateral mint for this market.
+    pub mint: Account<'info, Mint>,
+
+    /// User's token account to transfer from.
+    #[account(
+        mut,
+        constraint = user_token_account.owner == user.key(),
+        constraint = user_token_account.mint == mint.key(),
+    )]
+    pub user_token_account: Account<'info, TokenAccount>,
+
+    /// Vault token account to transfer into.
+    #[account(
+        mut,
+        seeds = [b"vault", market.key().as_ref()],
+        bump,
+        constraint = vault.mint == mint.key(),
+    )]
+    pub vault: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(ctx: Context<Deposit>, account_idx: u16, amount: u128) -> Result<()> {
+pub fn handler(ctx: Context<Deposit>, account_idx: u16, amount: u64) -> Result<()> {
+    require!(amount > 0, PercolatorError::InsufficientBalance);
+
+    // Transfer tokens from user to vault
+    transfer_checked(
+        CpiContext::new(
+            ctx.accounts.token_program.key(),
+            TransferChecked {
+                from: ctx.accounts.user_token_account.to_account_info(),
+                to: ctx.accounts.vault.to_account_info(),
+                authority: ctx.accounts.user.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
+            },
+        ),
+        amount,
+        ctx.accounts.mint.decimals,
+    )?;
+
+    // Update engine state
     let market = &ctx.accounts.market;
     let mut data = market.try_borrow_mut_data()?;
 
-    // Validate discriminator
-    require!(&data[0..8] == b"percmrkt", PercolatorError::AccountNotFound);
+    require!(
+        &data[0..8] == b"percmrkt",
+        PercolatorError::AccountNotFound
+    );
+
+    let header = header_from_account_data(&data)?;
+    require!(header.mint == ctx.accounts.mint.key(), PercolatorError::Unauthorized);
 
     let engine = engine_from_account_data(&mut data);
     let oracle_price = engine.last_oracle_price;
     let clock = Clock::get()?;
 
     engine
-        .deposit(account_idx, amount, oracle_price, clock.slot)
+        .deposit(account_idx, amount as u128, oracle_price, clock.slot)
         .map_err(from_risk_error)?;
-
-    // TODO: integrate SPL token transfer from user to vault
 
     Ok(())
 }

@@ -58,4 +58,9 @@ impl ChainConfig {
     pub fn market_pda(&self) -> (Pubkey, u8) {
         Pubkey::find_program_address(&[b"market", self.authority().as_ref()], &self.program_id)
     }
+
+    pub fn vault_pda(&self) -> (Pubkey, u8) {
+        let (market, _) = self.market_pda();
+        Pubkey::find_program_address(&[b"vault", market.as_ref()], &self.program_id)
+    }
 }

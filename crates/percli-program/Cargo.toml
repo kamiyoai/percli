@@ -23,5 +23,7 @@ idl-build = ["anchor-lang/idl-build"]
 
 [dependencies]
 anchor-lang = "1.0"
+anchor-spl = { version = "1.0", features = ["token"] }
 percli-core = { version = "0.5.0", path = "../percli-core", features = ["solana"] }
 bytemuck = { version = "1", features = ["derive"] }
+pyth-sdk-solana = "0.10"

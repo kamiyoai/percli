@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::Subcommand;
 use percli_chain::commands::query::QueryTarget;
 use percli_chain::ChainConfig;
+use solana_sdk::pubkey::Pubkey;
 
 #[derive(Subcommand)]
 pub enum ChainCommand {
@@ -12,21 +13,33 @@ pub enum ChainCommand {
         /// Account slot index
         #[arg(long)]
         idx: u16,
-        /// Amount to deposit
+        /// Amount to deposit (token base units)
         #[arg(long)]
-        amount: u128,
+        amount: u64,
+        /// SPL token mint address
+        #[arg(long)]
+        mint: Pubkey,
+        /// User's token account address
+        #[arg(long)]
+        token_account: Pubkey,
     },
     /// Withdraw from an account slot
     Withdraw {
         /// Account slot index
         #[arg(long)]
         idx: u16,
-        /// Amount to withdraw
+        /// Amount to withdraw (token base units)
         #[arg(long)]
-        amount: u128,
+        amount: u64,
         /// Funding rate
         #[arg(long, default_value = "0")]
         funding_rate: i64,
+        /// SPL token mint address
+        #[arg(long)]
+        mint: Pubkey,
+        /// User's token account address
+        #[arg(long)]
+        token_account: Pubkey,
     },
     /// Execute a trade between two accounts
     Trade {
@@ -46,11 +59,11 @@ pub enum ChainCommand {
         #[arg(long, default_value = "0")]
         funding_rate: i64,
     },
-    /// Run a keeper crank (update oracle price)
+    /// Run a keeper crank (read oracle price from Pyth)
     Crank {
-        /// Oracle price
+        /// Pyth price feed account address
         #[arg(long)]
-        oracle: u64,
+        oracle: Pubkey,
         /// Funding rate
         #[arg(long, default_value = "0")]
         funding_rate: i64,
@@ -99,14 +112,16 @@ pub fn run(
 
     match cmd {
         ChainCommand::Deploy => percli_chain::commands::deploy::run(&config),
-        ChainCommand::Deposit { idx, amount } => {
-            percli_chain::commands::deposit::run(&config, idx, amount)
+        ChainCommand::Deposit { idx, amount, mint, token_account } => {
+            percli_chain::commands::deposit::run(&config, idx, amount, &mint, &token_account)
         }
         ChainCommand::Withdraw {
             idx,
             amount,
             funding_rate,
-        } => percli_chain::commands::withdraw::run(&config, idx, amount, funding_rate),
+            mint,
+            token_account,
+        } => percli_chain::commands::withdraw::run(&config, idx, amount, funding_rate, &mint, &token_account),
         ChainCommand::Trade {
             account_a,
             account_b,
@@ -124,7 +139,7 @@ pub fn run(
         ChainCommand::Crank {
             oracle,
             funding_rate,
-        } => percli_chain::commands::crank::run(&config, oracle, funding_rate),
+        } => percli_chain::commands::crank::run(&config, &oracle, funding_rate),
         ChainCommand::Liquidate { idx, funding_rate } => {
             percli_chain::commands::liquidate::run(&config, idx, funding_rate)
         }

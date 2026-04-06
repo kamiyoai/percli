@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token::{Mint, Token, TokenAccount};
 use percli_core::RiskParams;
 
+use crate::error::PercolatorError;
 use crate::state::{engine_from_account_data, write_header, MarketHeader, MARKET_ACCOUNT_SIZE};
 
 #[derive(Accounts)]
@@ -18,6 +20,21 @@ pub struct InitializeMarket<'info> {
     )]
     pub market: UncheckedAccount<'info>,
 
+    /// The SPL token mint for this market's collateral (e.g. USDC).
+    pub mint: Account<'info, Mint>,
+
+    /// Vault token account — holds all deposited collateral for this market.
+    #[account(
+        init,
+        payer = authority,
+        token::mint = mint,
+        token::authority = market,
+        seeds = [b"vault", market.key().as_ref()],
+        bump,
+    )]
+    pub vault: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
 
@@ -35,10 +52,14 @@ pub fn handler(
 
     let header = MarketHeader {
         authority: ctx.accounts.authority.key(),
+        mint: ctx.accounts.mint.key(),
         bump: ctx.bumps.market,
-        _padding: [0; 7],
+        vault_bump: ctx.bumps.vault,
+        _padding: [0; 6],
     };
     write_header(&mut data, &header);
+
+    require!(init_oracle_price > 0, PercolatorError::InvalidOraclePriceValue);
 
     let engine = engine_from_account_data(&mut data);
     let risk_params = params.to_risk_params();
