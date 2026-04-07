@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-percli-core = { version = "0.6.0", path = "../percli-core" }
+percli-core = { version = "0.7.0", path = "../percli-core" }
 solana-sdk = "2.2"
 solana-client = "2.2"
 borsh = "1"

@@ -2905,7 +2905,7 @@ dependencies = [
 
 [[package]]
 name = "percli"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2925,7 +2925,7 @@ dependencies = [
 
 [[package]]
 name = "percli-chain"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "borsh 1.6.1",
@@ -2939,7 +2939,7 @@ dependencies = [
 
 [[package]]
 name = "percli-core"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2954,7 +2954,7 @@ dependencies = [
 
 [[package]]
 name = "percli-program"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
@@ -2965,7 +2965,7 @@ dependencies = [
 
 [[package]]
 name = "percli-wasm"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "percli-core",
  "serde_json",
@@ -2975,7 +2975,7 @@ dependencies = [
 
 [[package]]
 name = "percolator-engine"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "proptest",
 ]
