@@ -1,9 +1,14 @@
 use anyhow::{bail, Result};
 use solana_sdk::pubkey::Pubkey;
+use solana_sdk::system_instruction;
 
 use crate::config::ChainConfig;
 use crate::ix::{self, InitializeMarketArgs, RiskParamsInput};
 use crate::rpc::ChainRpc;
+
+/// Market account size: 8 (discriminator) + 136 (header) + size_of::<RiskEngine>().
+/// Must match MARKET_ACCOUNT_SIZE in the on-chain program.
+const MARKET_ACCOUNT_SIZE: usize = 8 + 136 + std::mem::size_of::<percli_core::RiskEngine>();
 
 pub fn run(
     config: &ChainConfig,
@@ -47,7 +52,18 @@ pub fn run(
         params,
     };
 
-    let ix = ix::initialize_market_ix(
+    // Step 1: Create the market PDA account (large accounts can't be created via CPI)
+    let rent = rpc.get_minimum_balance(MARKET_ACCOUNT_SIZE)?;
+    let create_ix = system_instruction::create_account(
+        &config.authority(),
+        &market_pda,
+        rent,
+        MARKET_ACCOUNT_SIZE as u64,
+        &config.program_id,
+    );
+
+    // Step 2: Initialize the market
+    let init_ix = ix::initialize_market_ix(
         &config.program_id,
         &market_pda,
         &config.authority(),
@@ -68,7 +84,7 @@ pub fn run(
     println!("  Matcher:    {matcher}");
     println!("  RPC: {}", config.rpc_url);
 
-    let sig = rpc.send_tx(&[ix], &config.keypair)?;
+    let sig = rpc.send_tx(&[create_ix, init_ix], &config.keypair)?;
     println!("  Tx: {sig}");
     println!("Market deployed.");
 

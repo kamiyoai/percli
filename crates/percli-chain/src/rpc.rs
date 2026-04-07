@@ -69,4 +69,10 @@ impl ChainRpc {
     pub fn get_slot(&self) -> Result<u64> {
         self.client.get_slot().context("Failed to get slot")
     }
+
+    pub fn get_minimum_balance(&self, data_len: usize) -> Result<u64> {
+        self.client
+            .get_minimum_balance_for_rent_exemption(data_len)
+            .context("Failed to get rent")
+    }
 }

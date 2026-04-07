@@ -3,6 +3,7 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 use percli_core::RiskParams;
 
 use crate::error::PercolatorError;
+#[allow(unused_imports)]
 use crate::state::{engine_from_account_data, write_header, MarketHeader, MARKET_ACCOUNT_SIZE};
 
 #[derive(Accounts)]
@@ -10,11 +11,14 @@ pub struct InitializeMarket<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
-    /// CHECK: Manually validated. Initialized as a PDA with the correct size.
+    /// CHECK: Pre-created by the client via `system_instruction::create_account`
+    /// with size = MARKET_ACCOUNT_SIZE and owner = this program.
+    /// Large accounts (>10 KB) cannot be created via CPI due to the realloc limit,
+    /// so the client must create the account before calling initialize_market.
     #[account(
-        init,
-        payer = authority,
-        space = MARKET_ACCOUNT_SIZE,
+        mut,
+        owner = crate::ID @ PercolatorError::AccountNotFound,
+        constraint = market.data_len() >= MARKET_ACCOUNT_SIZE @ PercolatorError::AccountNotFound,
         seeds = [b"market", authority.key().as_ref()],
         bump,
     )]
@@ -53,6 +57,12 @@ pub fn handler(
 ) -> Result<()> {
     let market = &ctx.accounts.market;
     let mut data = market.try_borrow_mut_data()?;
+
+    // Ensure the account hasn't already been initialized
+    require!(
+        data[0..8] == [0u8; 8],
+        PercolatorError::AccountNotFound
+    );
 
     // Write discriminator (first 8 bytes) — use a fixed marker
     data[0..8].copy_from_slice(b"percmrkt");

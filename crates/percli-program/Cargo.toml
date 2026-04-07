@@ -27,3 +27,13 @@ anchor-spl = { version = "1.0", features = ["token"] }
 percli-core = { version = "0.7.0", path = "../percli-core", features = ["solana"] }
 bytemuck = { version = "1", features = ["derive"] }
 pyth-sdk-solana = "0.10"
+
+[dev-dependencies]
+percli-core = { path = "../percli-core" }
+solana-program-test = "2.2"
+solana-sdk = "2.2"
+spl-token = "7"
+spl-associated-token-account = "6"
+tokio = { version = "1", features = ["full"] }
+borsh = "1"
+sha2 = "0.10"

@@ -19,7 +19,7 @@ pub struct Crank<'info> {
     #[account(
         mut,
         owner = crate::ID @ PercolatorError::AccountNotFound,
-        constraint = market.data_len() == MARKET_ACCOUNT_SIZE @ PercolatorError::AccountNotFound,
+        constraint = market.data_len() >= MARKET_ACCOUNT_SIZE @ PercolatorError::AccountNotFound,
     )]
     pub market: UncheckedAccount<'info>,
 

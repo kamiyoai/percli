@@ -195,8 +195,8 @@ pub fn trade_ix(
         "trade",
         args,
         vec![
-            AccountMeta::new(*market, false),
             AccountMeta::new_readonly(*authority, true),
+            AccountMeta::new(*market, false),
         ],
     )
 }
@@ -231,8 +231,8 @@ pub fn liquidate_ix(
         "liquidate",
         args,
         vec![
-            AccountMeta::new(*market, false),
             AccountMeta::new_readonly(*liquidator, true),
+            AccountMeta::new(*market, false),
         ],
     )
 }
@@ -248,8 +248,8 @@ pub fn settle_ix(
         "settle",
         args,
         vec![
-            AccountMeta::new(*market, false),
             AccountMeta::new_readonly(*user, true),
+            AccountMeta::new(*market, false),
         ],
     )
 }
@@ -265,8 +265,8 @@ pub fn close_account_ix(
         "close_account",
         args,
         vec![
-            AccountMeta::new(*market, false),
             AccountMeta::new_readonly(*user, true),
+            AccountMeta::new(*market, false),
         ],
     )
 }
