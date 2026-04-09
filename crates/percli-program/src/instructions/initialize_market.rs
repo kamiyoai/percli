@@ -3,6 +3,7 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 use percli_core::RiskParams;
 
 use crate::error::PercolatorError;
+use crate::instructions::events;
 #[allow(unused_imports)]
 use crate::state::{engine_from_account_data, write_header, MarketHeader, MARKET_ACCOUNT_SIZE};
 
@@ -83,6 +84,15 @@ pub fn handler(
     let engine = engine_from_account_data(&mut data);
     let risk_params = params.to_risk_params();
     engine.init_in_place(risk_params, init_slot, init_oracle_price);
+
+    emit!(events::MarketInitialized {
+        authority: ctx.accounts.authority.key(),
+        mint: ctx.accounts.mint.key(),
+        oracle: ctx.accounts.oracle.key(),
+        matcher: ctx.accounts.matcher.key(),
+        init_slot,
+        init_oracle_price,
+    });
 
     Ok(())
 }

@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use pyth_sdk_solana::state::{load_price_account, PriceStatus};
 
 use crate::error::{from_risk_error, PercolatorError};
+use crate::instructions::events;
 use crate::state::{engine_from_account_data, header_from_account_data, MARKET_ACCOUNT_SIZE};
 
 /// Maximum age of a Pyth price update before it's considered stale (seconds).
@@ -104,6 +105,12 @@ pub fn handler(ctx: Context<Crank>, funding_rate: i64) -> Result<()> {
     engine
         .keeper_crank_not_atomic(clock.slot, oracle_price, &[], 0, funding_rate)
         .map_err(from_risk_error)?;
+
+    emit!(events::Cranked {
+        cranker: ctx.accounts.cranker.key(),
+        oracle_price,
+        slot: clock.slot,
+    });
 
     Ok(())
 }

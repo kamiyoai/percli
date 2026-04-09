@@ -4182,6 +4182,36 @@ impl RiskEngine {
         Ok(self.insurance_fund.balance.get() > self.params.insurance_floor.get())
     }
 
+    /// Withdraw protocol revenue from insurance fund.
+    /// Enforces: post-withdrawal balance >= params.insurance_floor.
+    /// Decrements both insurance_fund.balance and vault (tokens leave SPL vault).
+    pub fn withdraw_insurance(&mut self, amount: u128, now_slot: u64) -> Result<()> {
+        if now_slot < self.current_slot {
+            return Err(RiskError::Overflow);
+        }
+        if amount == 0 {
+            return Err(RiskError::InsufficientBalance);
+        }
+        let ins_bal = self.insurance_fund.balance.get();
+        let floor = self.params.insurance_floor.get();
+        let post = ins_bal
+            .checked_sub(amount)
+            .ok_or(RiskError::InsufficientBalance)?;
+        if post < floor {
+            return Err(RiskError::InsufficientBalance);
+        }
+        let new_vault = self
+            .vault
+            .get()
+            .checked_sub(amount)
+            .ok_or(RiskError::InsufficientBalance)?;
+        // All checks passed — commit
+        self.current_slot = now_slot;
+        self.insurance_fund.balance = U128::new(post);
+        self.vault = U128::new(new_vault);
+        Ok(())
+    }
+
     // set_insurance_floor removed — configuration immutability (spec §2.2.1).
     // Insurance floor is fixed at initialization and cannot be changed at runtime.
 

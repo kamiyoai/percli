@@ -4,6 +4,8 @@ pub mod deploy;
 pub mod deposit;
 pub mod liquidate;
 pub mod query;
+pub mod reclaim;
 pub mod settle;
 pub mod trade;
 pub mod withdraw;
+pub mod withdraw_insurance;

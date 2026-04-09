@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{transfer_checked, Mint, Token, TokenAccount, TransferChecked};
 
 use crate::error::{from_risk_error, PercolatorError};
+use crate::instructions::events;
 use crate::state::{engine_from_account_data, header_from_account_data, MARKET_ACCOUNT_SIZE};
 
 #[derive(Accounts)]
@@ -90,6 +91,12 @@ pub fn handler(ctx: Context<Deposit>, account_idx: u16, amount: u64) -> Result<(
 
     // If this was a new account (owner is zero), claim it for the depositor
     let _ = engine.set_owner(account_idx, user_key.to_bytes());
+
+    emit!(events::Deposited {
+        user: ctx.accounts.user.key(),
+        account_idx,
+        amount,
+    });
 
     Ok(())
 }

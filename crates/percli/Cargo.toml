@@ -15,8 +15,8 @@ name = "percli"
 path = "src/main.rs"
 
 [dependencies]
-percli-core = { version = "0.7.0", path = "../percli-core" }
-percli-chain = { version = "0.7", path = "../percli-chain", optional = true }
+percli-core = { version = "0.8.0", path = "../percli-core" }
+percli-chain = { version = "0.8", path = "../percli-chain", optional = true }
 solana-sdk = { version = "2.2", optional = true }
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
@@ -26,10 +26,12 @@ toml = "0.8"
 anyhow = "1"
 comfy-table = "7"
 owo-colors = { version = "4", features = ["supports-colors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json"], optional = true }
 
 [features]
 default = []
-chain = ["percli-chain", "solana-sdk"]
+chain = ["percli-chain", "solana-sdk", "tracing-subscriber"]
 pyth = ["percli-core/pyth"]
 
 [dev-dependencies]

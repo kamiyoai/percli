@@ -1552,7 +1552,7 @@ fn proof_v1126_risk_reducing_fee_neutral() {
 }
 
 // ############################################################################
-// v12.1.0 compliance: MIN_NONZERO_MM_REQ floor (TODO: implement params first)
+// v12.1.0 compliance: MIN_NONZERO_MM_REQ floor (enforced via core::cmp::max in margin checks)
 // ############################################################################
 
 // Uncommented: RiskParams now has min_nonzero_mm_req / min_nonzero_im_req

@@ -5,8 +5,9 @@ use crate::instructions::events;
 use crate::state::{engine_from_account_data, MARKET_ACCOUNT_SIZE};
 
 #[derive(Accounts)]
-pub struct CloseAccount<'info> {
-    pub user: Signer<'info>,
+pub struct ReclaimAccount<'info> {
+    /// Permissionless — anyone can reclaim dead accounts.
+    pub reclaimer: Signer<'info>,
 
     /// CHECK: Validated via owner, discriminator, and size.
     #[account(
@@ -17,30 +18,24 @@ pub struct CloseAccount<'info> {
     pub market: UncheckedAccount<'info>,
 }
 
-pub fn handler(ctx: Context<CloseAccount>, account_idx: u16, funding_rate: i64) -> Result<()> {
+pub fn handler(ctx: Context<ReclaimAccount>, account_idx: u16) -> Result<()> {
     let market = &ctx.accounts.market;
     let mut data = market.try_borrow_mut_data()?;
 
-    require!(&data[0..8] == b"percmrkt", PercolatorError::AccountNotFound);
-
-    let engine = engine_from_account_data(&mut data);
-
-    // Verify signer owns this account
-    let account_owner = engine.accounts[account_idx as usize].owner;
     require!(
-        account_owner == ctx.accounts.user.key().to_bytes(),
-        PercolatorError::Unauthorized
+        &data[0..8] == b"percmrkt",
+        PercolatorError::AccountNotFound
     );
 
-    let oracle_price = engine.last_oracle_price;
+    let engine = engine_from_account_data(&mut data);
     let clock = Clock::get()?;
 
     engine
-        .close_account_not_atomic(account_idx, clock.slot, oracle_price, funding_rate)
+        .reclaim_empty_account_not_atomic(account_idx, clock.slot)
         .map_err(from_risk_error)?;
 
-    emit!(events::AccountClosed {
-        user: ctx.accounts.user.key(),
+    emit!(events::AccountReclaimed {
+        reclaimer: ctx.accounts.reclaimer.key(),
         account_idx,
     });
 

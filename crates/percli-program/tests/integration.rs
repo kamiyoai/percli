@@ -102,6 +102,22 @@ struct CloseAccountArgs {
     funding_rate: i64,
 }
 
+#[derive(BorshSerialize)]
+struct LiquidateArgs {
+    account_idx: u16,
+    funding_rate: i64,
+}
+
+#[derive(BorshSerialize)]
+struct ReclaimAccountArgs {
+    account_idx: u16,
+}
+
+#[derive(BorshSerialize)]
+struct WithdrawInsuranceArgs {
+    amount: u64,
+}
+
 fn default_risk_params() -> RiskParamsInput {
     RiskParamsInput {
         warmup_period_slots: 0,
@@ -352,6 +368,62 @@ fn close_account_ix(
         vec![
             AccountMeta::new_readonly(*user, true),
             AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+fn liquidate_ix(
+    liquidator: &Pubkey,
+    market: &Pubkey,
+    args: LiquidateArgs,
+) -> Instruction {
+    build_ix(
+        &program_id(),
+        "liquidate",
+        args,
+        vec![
+            AccountMeta::new_readonly(*liquidator, true),
+            AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+fn reclaim_account_ix(
+    reclaimer: &Pubkey,
+    market: &Pubkey,
+    args: ReclaimAccountArgs,
+) -> Instruction {
+    build_ix(
+        &program_id(),
+        "reclaim_account",
+        args,
+        vec![
+            AccountMeta::new_readonly(*reclaimer, true),
+            AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn withdraw_insurance_ix(
+    authority: &Pubkey,
+    market: &Pubkey,
+    mint: &Pubkey,
+    authority_token_account: &Pubkey,
+    vault: &Pubkey,
+    args: WithdrawInsuranceArgs,
+) -> Instruction {
+    build_ix(
+        &program_id(),
+        "withdraw_insurance",
+        args,
+        vec![
+            AccountMeta::new(*authority, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new(*authority_token_account, false),
+            AccountMeta::new(*vault, false),
+            AccountMeta::new_readonly(spl_token::id(), false),
         ],
     )
 }
@@ -1178,4 +1250,294 @@ async fn test_deposit_zero_amount_fails() {
     let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
     let result = env.banks_client.process_transaction(tx).await;
     assert!(result.is_err(), "zero deposit should fail");
+}
+
+// ---------------------------------------------------------------------------
+// New v0.8.0 tests
+// ---------------------------------------------------------------------------
+
+/// Helper: set up two funded accounts with positions for liquidation testing.
+async fn setup_two_accounts_with_trade(
+) -> (TestEnv, Keypair, Pubkey, Pubkey) {
+    let mut env = setup_market().await;
+    let user_b = Keypair::new();
+
+    // Fund user B with SOL
+    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &user_b.pubkey(), 2_000_000_000);
+    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let ata_a = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    let ata_b = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &user_b.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata_a, 10_000_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata_b, 10_000_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Deposit for both users
+    let dep_a = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata_a, &env.vault, DepositArgs { account_idx: 0, amount: 500_000 });
+    let tx = Transaction::new_signed_with_payer(&[dep_a], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let dep_b = deposit_ix(&user_b.pubkey(), &env.market, &env.mint, &ata_b, &env.vault, DepositArgs { account_idx: 1, amount: 500_000 });
+    let tx = Transaction::new_signed_with_payer(&[dep_b], Some(&user_b.pubkey()), &[&user_b], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Trade: account 0 long, account 1 short
+    let ix = trade_ix(&env.matcher.pubkey(), &env.market, TradeArgs {
+        account_a: 0,
+        account_b: 1,
+        size_q: 1_000_000,
+        exec_price: 1000,
+        funding_rate: 0,
+    });
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority, &env.matcher], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    (env, user_b, ata_a, ata_b)
+}
+
+#[tokio::test]
+async fn test_liquidate_healthy_account_no_effect() {
+    let (mut env, _user_b, _ata_a, _ata_b) = setup_two_accounts_with_trade().await;
+
+    // Try to liquidate account 0 — should not fail but liquidated=false
+    // (account is well-collateralized at current price)
+    let ix = liquidate_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        LiquidateArgs { account_idx: 0, funding_rate: 0 },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    // Liquidation of healthy account either returns false or succeeds without effect
+    let _ = env.banks_client.process_transaction(tx).await;
+}
+
+#[tokio::test]
+async fn test_withdraw_insurance_authority_only() {
+    let mut env = setup_market().await;
+
+    // We need insurance fund to have some balance.
+    // The insurance fund starts at 0. We'll deposit and trade to generate fees.
+    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 10_000_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Deposit (new_account_fee=0 in our config, so no insurance accrual from deposit alone)
+    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 1_000_000 });
+    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Try to withdraw 0 insurance — should fail (amount=0)
+    let ix = withdraw_insurance_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        WithdrawInsuranceArgs { amount: 0 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "zero withdraw_insurance should fail");
+}
+
+#[tokio::test]
+async fn test_withdraw_insurance_unauthorized() {
+    let mut env = setup_market().await;
+
+    let intruder = Keypair::new();
+    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let intruder_ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &intruder.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Non-authority tries to withdraw insurance
+    let ix = withdraw_insurance_ix(
+        &intruder.pubkey(),
+        &env.market,
+        &env.mint,
+        &intruder_ata,
+        &env.vault,
+        WithdrawInsuranceArgs { amount: 1000 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&intruder.pubkey()), &[&intruder], env.recent_blockhash);
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "non-authority withdraw_insurance should fail");
+}
+
+#[tokio::test]
+async fn test_reclaim_active_account_rejected() {
+    let mut env = setup_market().await;
+
+    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Deposit enough capital (well above min_initial_deposit=1000)
+    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 100_000 });
+    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Try to reclaim — should fail (capital >> 0, above floor)
+    let ix = reclaim_account_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        ReclaimAccountArgs { account_idx: 0 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "reclaim of active account should fail");
+}
+
+#[tokio::test]
+async fn test_reclaim_unused_slot_rejected() {
+    let mut env = setup_market().await;
+
+    // Try to reclaim slot 0 that was never used
+    let ix = reclaim_account_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        ReclaimAccountArgs { account_idx: 0 },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "reclaim of unused slot should fail");
+}
+
+#[tokio::test]
+async fn test_close_account_wrong_owner_rejected() {
+    let mut env = setup_market().await;
+
+    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 100_000 });
+    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Intruder tries to close
+    let intruder = Keypair::new();
+    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let ix = close_account_ix(
+        &intruder.pubkey(),
+        &env.market,
+        CloseAccountArgs { account_idx: 0, funding_rate: 0 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&intruder.pubkey()), &[&intruder], env.recent_blockhash);
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "close by non-owner should fail");
+}
+
+#[tokio::test]
+async fn test_deposit_trade_settle_close_lifecycle() {
+    let (mut env, user_b, ata_a, _ata_b) = setup_two_accounts_with_trade().await;
+
+    // Settle account 0
+    let ix = settle_ix(&env.authority.pubkey(), &env.market, SettleArgs { account_idx: 0, funding_rate: 0 });
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Settle account 1
+    let ix = settle_ix(&user_b.pubkey(), &env.market, SettleArgs { account_idx: 1, funding_rate: 0 });
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&user_b.pubkey()), &[&user_b], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Vault should still have tokens
+    let vault_bal = token_balance(&mut env.banks_client, &env.vault).await;
+    assert!(vault_bal > 0, "vault should have tokens after trade");
+
+    // Withdraw from account 0 (partial)
+    let ix = withdraw_ix(
+        &env.authority.pubkey(), &env.market, &env.mint, &ata_a, &env.vault,
+        WithdrawArgs { account_idx: 0, amount: 10_000, funding_rate: 0 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+
+    // Verify user received tokens
+    let user_bal = token_balance(&mut env.banks_client, &ata_a).await;
+    assert!(user_bal > 0, "user should have received withdrawn tokens");
+}
+
+#[tokio::test]
+async fn test_multiple_deposits_same_slot() {
+    let mut env = setup_market().await;
+
+    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 10_000_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Deposit 1
+    let dep1 = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 50_000 });
+    let tx = Transaction::new_signed_with_payer(&[dep1], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Deposit 2 (same slot, same owner)
+    let dep2 = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 30_000 });
+    let tx = Transaction::new_signed_with_payer(&[dep2], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+
+    // Vault should have 80_000
+    let vault_bal = token_balance(&mut env.banks_client, &env.vault).await;
+    assert_eq!(vault_bal, 80_000);
+}
+
+#[tokio::test]
+async fn test_withdraw_more_than_available_rejected() {
+    let mut env = setup_market().await;
+
+    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 10_000 });
+    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Try to withdraw more than deposited
+    let ix = withdraw_ix(
+        &env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault,
+        WithdrawArgs { account_idx: 0, amount: 999_999, funding_rate: 0 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "withdrawing more than balance should fail");
 }

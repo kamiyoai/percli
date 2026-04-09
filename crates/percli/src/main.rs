@@ -155,6 +155,9 @@ enum Commands {
         /// Pyth price feed account pubkey (required for oracle reads)
         #[arg(long)]
         pyth_feed: String,
+        /// Output structured JSON logs instead of human-readable text
+        #[arg(long)]
+        json_logs: bool,
     },
     /// Generate shell completions
     Completions {
@@ -301,7 +304,16 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             program,
             interval,
             pyth_feed,
+            json_logs,
         } => {
+            #[cfg(feature = "chain")]
+            {
+                if json_logs {
+                    tracing_subscriber::fmt().json().init();
+                } else {
+                    tracing_subscriber::fmt().init();
+                }
+            }
             let config = percli_chain::ChainConfig::new(
                 rpc.as_deref(),
                 keypair.as_deref(),

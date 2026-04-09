@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use percli_core::LiquidationPolicy;
 
 use crate::error::{from_risk_error, PercolatorError};
+use crate::instructions::events;
 use crate::state::{engine_from_account_data, MARKET_ACCOUNT_SIZE};
 
 #[derive(Accounts)]
@@ -37,6 +38,12 @@ pub fn handler(ctx: Context<Liquidate>, account_idx: u16, funding_rate: i64) -> 
             funding_rate,
         )
         .map_err(from_risk_error)?;
+
+    emit!(events::Liquidated {
+        liquidator: ctx.accounts.liquidator.key(),
+        account_idx,
+        liquidated,
+    });
 
     Ok(liquidated)
 }

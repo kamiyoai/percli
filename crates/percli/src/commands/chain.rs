@@ -108,6 +108,24 @@ pub enum ChainCommand {
         #[arg(long, default_value = "0")]
         funding_rate: i64,
     },
+    /// Reclaim a dead account slot (permissionless)
+    Reclaim {
+        /// Account slot index
+        #[arg(long)]
+        idx: u16,
+    },
+    /// Withdraw protocol fees from insurance fund (authority only)
+    WithdrawInsurance {
+        /// Amount to withdraw (token base units)
+        #[arg(long)]
+        amount: u64,
+        /// SPL token mint address
+        #[arg(long)]
+        mint: Pubkey,
+        /// Authority's token account address
+        #[arg(long)]
+        token_account: Pubkey,
+    },
     /// Query on-chain market or account state
     Query {
         /// What to query: "market" or an account index
@@ -163,6 +181,12 @@ pub fn run(
         }
         ChainCommand::Close { idx, funding_rate } => {
             percli_chain::commands::close::run(&config, idx, funding_rate)
+        }
+        ChainCommand::Reclaim { idx } => {
+            percli_chain::commands::reclaim::run(&config, idx)
+        }
+        ChainCommand::WithdrawInsurance { amount, mint, token_account } => {
+            percli_chain::commands::withdraw_insurance::run(&config, amount, &mint, &token_account)
         }
         ChainCommand::Query { target } => {
             let qt = if target == "market" {

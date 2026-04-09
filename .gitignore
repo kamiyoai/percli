@@ -39,3 +39,6 @@ desktop.ini
 .env
 .env.local
 test-ledger/
+
+# Internal planning docs
+/docs/

@@ -66,4 +66,12 @@ pub mod percli_program {
     ) -> Result<()> {
         instructions::close_account::handler(ctx, account_idx, funding_rate)
     }
+
+    pub fn reclaim_account(ctx: Context<ReclaimAccount>, account_idx: u16) -> Result<()> {
+        instructions::reclaim_account::handler(ctx, account_idx)
+    }
+
+    pub fn withdraw_insurance(ctx: Context<WithdrawInsurance>, amount: u64) -> Result<()> {
+        instructions::withdraw_insurance::handler(ctx, amount)
+    }
 }

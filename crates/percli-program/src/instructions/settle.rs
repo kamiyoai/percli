@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::error::{from_risk_error, PercolatorError};
+use crate::instructions::events;
 use crate::state::{engine_from_account_data, MARKET_ACCOUNT_SIZE};
 
 #[derive(Accounts)]
@@ -37,6 +38,11 @@ pub fn handler(ctx: Context<Settle>, account_idx: u16, funding_rate: i64) -> Res
     engine
         .settle_account_not_atomic(account_idx, oracle_price, clock.slot, funding_rate)
         .map_err(from_risk_error)?;
+
+    emit!(events::Settled {
+        user: ctx.accounts.user.key(),
+        account_idx,
+    });
 
     Ok(())
 }

@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::error::{from_risk_error, PercolatorError};
+use crate::instructions::events;
 use crate::state::{engine_from_account_data, header_from_account_data, MARKET_ACCOUNT_SIZE};
 
 #[derive(Accounts)]
@@ -54,6 +55,14 @@ pub fn handler(
             funding_rate,
         )
         .map_err(from_risk_error)?;
+
+    emit!(events::TradeExecuted {
+        matcher: ctx.accounts.signer.key(),
+        account_a,
+        account_b,
+        size_q,
+        exec_price,
+    });
 
     Ok(())
 }

@@ -104,6 +104,16 @@ pub struct CloseAccountArgs {
     pub funding_rate: i64,
 }
 
+#[derive(BorshSerialize)]
+pub struct ReclaimAccountArgs {
+    pub account_idx: u16,
+}
+
+#[derive(BorshSerialize)]
+pub struct WithdrawInsuranceArgs {
+    pub amount: u64,
+}
+
 // --- Instruction builders ---
 
 pub fn initialize_market_ix(
@@ -267,6 +277,48 @@ pub fn close_account_ix(
         vec![
             AccountMeta::new_readonly(*user, true),
             AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+pub fn reclaim_account_ix(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    reclaimer: &Pubkey,
+    args: ReclaimAccountArgs,
+) -> Instruction {
+    build_ix(
+        program_id,
+        "reclaim_account",
+        args,
+        vec![
+            AccountMeta::new_readonly(*reclaimer, true),
+            AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+pub fn withdraw_insurance_ix(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    authority: &Pubkey,
+    mint: &Pubkey,
+    authority_token_account: &Pubkey,
+    vault: &Pubkey,
+    token_program: &Pubkey,
+    args: WithdrawInsuranceArgs,
+) -> Instruction {
+    build_ix(
+        program_id,
+        "withdraw_insurance",
+        args,
+        vec![
+            AccountMeta::new(*authority, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new(*authority_token_account, false),
+            AccountMeta::new(*vault, false),
+            AccountMeta::new_readonly(*token_program, false),
         ],
     )
 }
