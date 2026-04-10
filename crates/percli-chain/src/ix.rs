@@ -114,6 +114,29 @@ pub struct WithdrawInsuranceArgs {
     pub amount: u64,
 }
 
+#[derive(BorshSerialize)]
+pub struct TopUpInsuranceArgs {
+    pub amount: u64,
+}
+
+#[derive(BorshSerialize)]
+pub struct DepositFeeCreditsArgs {
+    pub account_idx: u16,
+    pub amount: u64,
+}
+
+#[derive(BorshSerialize)]
+pub struct ConvertReleasedPnlArgs {
+    pub account_idx: u16,
+    pub x_req: u64,
+    pub funding_rate: i64,
+}
+
+#[derive(BorshSerialize)]
+pub struct UpdateMatcherArgs {
+    pub new_matcher: Pubkey,
+}
+
 // --- Instruction builders ---
 
 pub fn initialize_market_ix(
@@ -319,6 +342,128 @@ pub fn withdraw_insurance_ix(
             AccountMeta::new(*authority_token_account, false),
             AccountMeta::new(*vault, false),
             AccountMeta::new_readonly(*token_program, false),
+        ],
+    )
+}
+
+pub fn top_up_insurance_ix(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    depositor: &Pubkey,
+    mint: &Pubkey,
+    depositor_token_account: &Pubkey,
+    vault: &Pubkey,
+    token_program: &Pubkey,
+    args: TopUpInsuranceArgs,
+) -> Instruction {
+    build_ix(
+        program_id,
+        "top_up_insurance",
+        args,
+        vec![
+            AccountMeta::new(*depositor, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new(*depositor_token_account, false),
+            AccountMeta::new(*vault, false),
+            AccountMeta::new_readonly(*token_program, false),
+        ],
+    )
+}
+
+pub fn deposit_fee_credits_ix(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    user: &Pubkey,
+    mint: &Pubkey,
+    user_token_account: &Pubkey,
+    vault: &Pubkey,
+    token_program: &Pubkey,
+    args: DepositFeeCreditsArgs,
+) -> Instruction {
+    build_ix(
+        program_id,
+        "deposit_fee_credits",
+        args,
+        vec![
+            AccountMeta::new(*user, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new(*user_token_account, false),
+            AccountMeta::new(*vault, false),
+            AccountMeta::new_readonly(*token_program, false),
+        ],
+    )
+}
+
+pub fn convert_released_pnl_ix(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    user: &Pubkey,
+    oracle: &Pubkey,
+    args: ConvertReleasedPnlArgs,
+) -> Instruction {
+    build_ix(
+        program_id,
+        "convert_released_pnl",
+        args,
+        vec![
+            AccountMeta::new_readonly(*user, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*oracle, false),
+        ],
+    )
+}
+
+pub fn accrue_market_ix(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    signer: &Pubkey,
+    oracle: &Pubkey,
+) -> Instruction {
+    build_ix(
+        program_id,
+        "accrue_market",
+        (),
+        vec![
+            AccountMeta::new_readonly(*signer, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*oracle, false),
+        ],
+    )
+}
+
+pub fn update_matcher_ix(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    authority: &Pubkey,
+    args: UpdateMatcherArgs,
+) -> Instruction {
+    build_ix(
+        program_id,
+        "update_matcher",
+        args,
+        vec![
+            AccountMeta::new_readonly(*authority, true),
+            AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+pub fn update_oracle_ix(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    authority: &Pubkey,
+    new_oracle: &Pubkey,
+) -> Instruction {
+    build_ix(
+        program_id,
+        "update_oracle",
+        (),
+        vec![
+            AccountMeta::new_readonly(*authority, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*new_oracle, false),
         ],
     )
 }

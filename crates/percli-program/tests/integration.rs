@@ -118,6 +118,22 @@ struct WithdrawInsuranceArgs {
     amount: u64,
 }
 
+#[derive(BorshSerialize)]
+struct TopUpInsuranceArgs {
+    amount: u64,
+}
+
+#[derive(BorshSerialize)]
+struct DepositFeeCreditsArgs {
+    account_idx: u16,
+    amount: u64,
+}
+
+#[derive(BorshSerialize)]
+struct UpdateMatcherArgsTest {
+    new_matcher: Pubkey,
+}
+
 fn default_risk_params() -> RiskParamsInput {
     RiskParamsInput {
         warmup_period_slots: 0,
@@ -424,6 +440,87 @@ fn withdraw_insurance_ix(
             AccountMeta::new(*authority_token_account, false),
             AccountMeta::new(*vault, false),
             AccountMeta::new_readonly(spl_token::id(), false),
+        ],
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn top_up_insurance_ix(
+    depositor: &Pubkey,
+    market: &Pubkey,
+    mint: &Pubkey,
+    depositor_token_account: &Pubkey,
+    vault: &Pubkey,
+    args: TopUpInsuranceArgs,
+) -> Instruction {
+    build_ix(
+        &program_id(),
+        "top_up_insurance",
+        args,
+        vec![
+            AccountMeta::new(*depositor, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new(*depositor_token_account, false),
+            AccountMeta::new(*vault, false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+        ],
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn deposit_fee_credits_ix(
+    user: &Pubkey,
+    market: &Pubkey,
+    mint: &Pubkey,
+    user_token_account: &Pubkey,
+    vault: &Pubkey,
+    args: DepositFeeCreditsArgs,
+) -> Instruction {
+    build_ix(
+        &program_id(),
+        "deposit_fee_credits",
+        args,
+        vec![
+            AccountMeta::new(*user, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new(*user_token_account, false),
+            AccountMeta::new(*vault, false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+        ],
+    )
+}
+
+fn update_matcher_ix(
+    authority: &Pubkey,
+    market: &Pubkey,
+    args: UpdateMatcherArgsTest,
+) -> Instruction {
+    build_ix(
+        &program_id(),
+        "update_matcher",
+        args,
+        vec![
+            AccountMeta::new_readonly(*authority, true),
+            AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+fn update_oracle_ix(
+    authority: &Pubkey,
+    market: &Pubkey,
+    new_oracle: &Pubkey,
+) -> Instruction {
+    build_ix(
+        &program_id(),
+        "update_oracle",
+        (),
+        vec![
+            AccountMeta::new_readonly(*authority, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*new_oracle, false),
         ],
     )
 }
@@ -1540,4 +1637,350 @@ async fn test_withdraw_more_than_available_rejected() {
     let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
     let result = env.banks_client.process_transaction(tx).await;
     assert!(result.is_err(), "withdrawing more than balance should fail");
+}
+
+// ---------------------------------------------------------------------------
+// v0.9.0 tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_top_up_insurance() {
+    let mut env = setup_market().await;
+
+    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let ix = top_up_insurance_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        TopUpInsuranceArgs { amount: 50_000 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+
+    let vault_bal = token_balance(&mut env.banks_client, &env.vault).await;
+    assert_eq!(vault_bal, 50_000, "vault should hold top-up amount");
+
+    let user_bal = token_balance(&mut env.banks_client, &ata).await;
+    assert_eq!(user_bal, 950_000);
+}
+
+#[tokio::test]
+async fn test_top_up_insurance_zero_fails() {
+    let mut env = setup_market().await;
+
+    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let ix = top_up_insurance_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        TopUpInsuranceArgs { amount: 0 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "zero top-up should fail");
+}
+
+#[tokio::test]
+async fn test_top_up_insurance_permissionless() {
+    let mut env = setup_market().await;
+
+    // Random user (not authority) can top up
+    let random_user = Keypair::new();
+    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &random_user.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let user_ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &random_user.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &user_ata, 100_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let ix = top_up_insurance_ix(
+        &random_user.pubkey(),
+        &env.market,
+        &env.mint,
+        &user_ata,
+        &env.vault,
+        TopUpInsuranceArgs { amount: 25_000 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&random_user.pubkey()), &[&random_user], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+
+    let vault_bal = token_balance(&mut env.banks_client, &env.vault).await;
+    assert_eq!(vault_bal, 25_000, "permissionless top-up should work");
+}
+
+#[tokio::test]
+async fn test_deposit_fee_credits() {
+    let mut env = setup_market().await;
+
+    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // First deposit to open the account slot
+    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 100_000 });
+    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Deposit fee credits (no fee debt yet, so engine caps to 0, but SPL transfer still happens)
+    let ix = deposit_fee_credits_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        DepositFeeCreditsArgs { account_idx: 0, amount: 10_000 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+
+    // Vault should now have deposit + fee credits
+    let vault_bal = token_balance(&mut env.banks_client, &env.vault).await;
+    assert_eq!(vault_bal, 110_000);
+}
+
+#[tokio::test]
+async fn test_deposit_fee_credits_wrong_owner() {
+    let mut env = setup_market().await;
+
+    // Authority opens slot 0
+    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 100_000 });
+    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Intruder tries to deposit fee credits to authority's slot
+    let intruder = Keypair::new();
+    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let intruder_ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &intruder.pubkey()).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &intruder_ata, 100_000).await;
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let ix = deposit_fee_credits_ix(
+        &intruder.pubkey(),
+        &env.market,
+        &env.mint,
+        &intruder_ata,
+        &env.vault,
+        DepositFeeCreditsArgs { account_idx: 0, amount: 5_000 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&intruder.pubkey()), &[&intruder], env.recent_blockhash);
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "deposit_fee_credits by non-owner should fail");
+}
+
+#[tokio::test]
+async fn test_update_matcher() {
+    let (mut env, user_b, _ata_a, _ata_b) = setup_two_accounts_with_trade().await;
+
+    let new_matcher = Keypair::new();
+
+    // Authority rotates matcher
+    let ix = update_matcher_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        UpdateMatcherArgsTest { new_matcher: new_matcher.pubkey() },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Old matcher should be rejected
+    let ix = trade_ix(
+        &env.matcher.pubkey(),
+        &env.market,
+        TradeArgs { account_a: 0, account_b: 1, size_q: 50, exec_price: 1000, funding_rate: 0 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority, &env.matcher], env.recent_blockhash);
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "old matcher should be rejected after rotation");
+
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Fund new matcher with SOL
+    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &new_matcher.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // New matcher should work — settle first to flatten positions
+    let settle_a = settle_ix(&env.authority.pubkey(), &env.market, SettleArgs { account_idx: 0, funding_rate: 0 });
+    let tx = Transaction::new_signed_with_payer(&[settle_a], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let settle_b = settle_ix(&user_b.pubkey(), &env.market, SettleArgs { account_idx: 1, funding_rate: 0 });
+    let tx = Transaction::new_signed_with_payer(&[settle_b], Some(&user_b.pubkey()), &[&user_b], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Trade with new matcher
+    let ix = trade_ix(
+        &new_matcher.pubkey(),
+        &env.market,
+        TradeArgs { account_a: 0, account_b: 1, size_q: 50, exec_price: 1000, funding_rate: 0 },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority, &new_matcher], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_update_matcher_unauthorized() {
+    let mut env = setup_market().await;
+
+    let intruder = Keypair::new();
+    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let ix = update_matcher_ix(
+        &intruder.pubkey(),
+        &env.market,
+        UpdateMatcherArgsTest { new_matcher: intruder.pubkey() },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&intruder.pubkey()), &[&intruder], env.recent_blockhash);
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "non-authority update_matcher should fail");
+}
+
+#[tokio::test]
+async fn test_update_oracle() {
+    let mut env = setup_market().await;
+
+    // Create a new oracle account owned by PYTH_PROGRAM_ID
+    // In test env, we just need the account to have the right owner
+    let new_oracle = Pubkey::new_unique();
+
+    // We can't easily add accounts after ProgramTest starts, but update_oracle
+    // validates that new_oracle.owner == PYTH_PROGRAM_ID. Since we can't create
+    // a Pyth-owned account at runtime, we test the authority check instead.
+    // The unauthorized test below covers the auth check. The happy path is covered
+    // by setup_program_test adding oracle with a specific owner.
+
+    // For a proper happy-path test, we need the oracle stub to have PYTH_PROGRAM_ID as owner.
+    // Let's do that via a custom setup.
+    let authority = Keypair::new();
+    let old_oracle = Pubkey::new_unique();
+    let new_oracle_key = Pubkey::new_unique();
+    let pyth_program_id: Pubkey = "FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH".parse().unwrap();
+
+    let mut pt = program_test();
+    let (market, _bump) = market_pda(&authority.pubkey());
+
+    pt.add_account(
+        market,
+        solana_sdk::account::Account {
+            lamports: 100_000_000_000,
+            data: vec![0u8; MARKET_ACCOUNT_SIZE],
+            owner: program_id(),
+            executable: false,
+            rent_epoch: u64::MAX,
+        },
+    );
+
+    // Old oracle — owned by some random program (not Pyth, just a stub)
+    pt.add_account(
+        old_oracle,
+        solana_sdk::account::Account {
+            lamports: 1_000_000,
+            data: vec![0u8; 64],
+            owner: Pubkey::new_unique(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+
+    // New oracle — owned by PYTH_PROGRAM_ID
+    pt.add_account(
+        new_oracle_key,
+        solana_sdk::account::Account {
+            lamports: 1_000_000,
+            data: vec![0u8; 64],
+            owner: pyth_program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+
+    pt.add_account(
+        authority.pubkey(),
+        solana_sdk::account::Account {
+            lamports: 100_000_000_000_000,
+            data: vec![],
+            owner: solana_sdk::system_program::id(),
+            executable: false,
+            rent_epoch: u64::MAX,
+        },
+    );
+
+    let matcher = Keypair::new();
+    let (vault, _vbump) = vault_pda(&market);
+    let (mut banks_client, _payer, recent_blockhash) = pt.start().await;
+
+    let mint_kp = create_mint(&mut banks_client, &authority, recent_blockhash, 6).await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let slot = banks_client.get_root_slot().await.unwrap();
+    let ix = initialize_market_ix(
+        &authority.pubkey(), &market, &mint_kp.pubkey(), &vault, &old_oracle, &matcher.pubkey(),
+        InitializeMarketArgs { init_slot: slot, init_oracle_price: 1000, params: default_risk_params() },
+    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&authority.pubkey()), &[&authority], recent_blockhash);
+    banks_client.process_transaction(tx).await.unwrap();
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Update oracle
+    let ix = update_oracle_ix(&authority.pubkey(), &market, &new_oracle_key);
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&authority.pubkey()), &[&authority], recent_blockhash);
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Verify: read the header and check oracle field
+    let market_account = banks_client.get_account(market).await.unwrap().unwrap();
+    // The oracle pubkey is at offset 8 (discriminator) + 32 (authority) + 32 (mint) = 72
+    let oracle_bytes = &market_account.data[72..104];
+    assert_eq!(oracle_bytes, new_oracle_key.to_bytes(), "oracle should be updated in header");
+}
+
+#[tokio::test]
+async fn test_update_oracle_unauthorized() {
+    let mut env = setup_market().await;
+
+    let intruder = Keypair::new();
+    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Intruder tries to update oracle — should fail even though we use the existing oracle as new_oracle
+    let ix = update_oracle_ix(&intruder.pubkey(), &env.market, &env.oracle);
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&intruder.pubkey()), &[&intruder], env.recent_blockhash);
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "non-authority update_oracle should fail");
 }

@@ -237,6 +237,34 @@ percli chain withdraw --idx 0 --amount 50000 \
 percli chain liquidate --idx 0
 percli chain settle --idx 1
 
+# Top up insurance fund (permissionless)
+percli chain top-up-insurance --amount 50000 \
+  --mint <MINT_PUBKEY> --token-account <USER_ATA>
+
+# Withdraw from insurance fund (authority only)
+percli chain withdraw-insurance --amount 10000 \
+  --mint <MINT_PUBKEY> --token-account <AUTH_ATA>
+
+# Deposit fee credits to an account (owner only)
+percli chain deposit-fee-credits --idx 0 --amount 5000 \
+  --mint <MINT_PUBKEY> --token-account <USER_ATA>
+
+# Convert released PnL (permissionless, needs oracle)
+percli chain convert-released-pnl --idx 0 --x-req 1000 \
+  --oracle <PYTH_FEED_PUBKEY>
+
+# Accrue market state (permissionless, needs oracle)
+percli chain accrue-market --oracle <PYTH_FEED_PUBKEY>
+
+# Reclaim dead account slot (permissionless)
+percli chain reclaim --idx 0
+
+# Rotate matcher key (authority only)
+percli chain update-matcher --new-matcher <NEW_MATCHER_PUBKEY>
+
+# Rotate oracle feed (authority only)
+percli chain update-oracle --new-oracle <NEW_ORACLE_PUBKEY>
+
 # Query on-chain state
 percli chain query market
 percli chain query 0   # query account at index 0

@@ -126,6 +126,66 @@ pub enum ChainCommand {
         #[arg(long)]
         token_account: Pubkey,
     },
+    /// Top up the insurance fund (permissionless)
+    TopUpInsurance {
+        /// Amount to deposit (token base units)
+        #[arg(long)]
+        amount: u64,
+        /// SPL token mint address
+        #[arg(long)]
+        mint: Pubkey,
+        /// Depositor's token account address
+        #[arg(long)]
+        token_account: Pubkey,
+    },
+    /// Deposit fee credits to an account (owner only)
+    DepositFeeCredits {
+        /// Account slot index
+        #[arg(long)]
+        idx: u16,
+        /// Amount to deposit (token base units)
+        #[arg(long)]
+        amount: u64,
+        /// SPL token mint address
+        #[arg(long)]
+        mint: Pubkey,
+        /// User's token account address
+        #[arg(long)]
+        token_account: Pubkey,
+    },
+    /// Convert released PnL for an account (permissionless)
+    ConvertReleasedPnl {
+        /// Account slot index
+        #[arg(long)]
+        idx: u16,
+        /// Amount to convert (base units)
+        #[arg(long)]
+        x_req: u64,
+        /// Pyth price feed account address
+        #[arg(long)]
+        oracle: Pubkey,
+        /// Funding rate
+        #[arg(long, default_value = "0")]
+        funding_rate: i64,
+    },
+    /// Accrue market state (mark-to-market + funding, permissionless)
+    AccrueMarket {
+        /// Pyth price feed account address
+        #[arg(long)]
+        oracle: Pubkey,
+    },
+    /// Update the matcher pubkey (authority only)
+    UpdateMatcher {
+        /// New matcher pubkey
+        #[arg(long)]
+        new_matcher: Pubkey,
+    },
+    /// Update the oracle feed (authority only)
+    UpdateOracle {
+        /// New Pyth oracle account address
+        #[arg(long)]
+        new_oracle: Pubkey,
+    },
     /// Query on-chain market or account state
     Query {
         /// What to query: "market" or an account index
@@ -187,6 +247,24 @@ pub fn run(
         }
         ChainCommand::WithdrawInsurance { amount, mint, token_account } => {
             percli_chain::commands::withdraw_insurance::run(&config, amount, &mint, &token_account)
+        }
+        ChainCommand::TopUpInsurance { amount, mint, token_account } => {
+            percli_chain::commands::top_up_insurance::run(&config, amount, &mint, &token_account)
+        }
+        ChainCommand::DepositFeeCredits { idx, amount, mint, token_account } => {
+            percli_chain::commands::deposit_fee_credits::run(&config, idx, amount, &mint, &token_account)
+        }
+        ChainCommand::ConvertReleasedPnl { idx, x_req, oracle, funding_rate } => {
+            percli_chain::commands::convert_released_pnl::run(&config, idx, x_req, &oracle, funding_rate)
+        }
+        ChainCommand::AccrueMarket { oracle } => {
+            percli_chain::commands::accrue_market::run(&config, &oracle)
+        }
+        ChainCommand::UpdateMatcher { new_matcher } => {
+            percli_chain::commands::update_matcher::run(&config, &new_matcher)
+        }
+        ChainCommand::UpdateOracle { new_oracle } => {
+            percli_chain::commands::update_oracle::run(&config, &new_oracle)
         }
         ChainCommand::Query { target } => {
             let qt = if target == "market" {

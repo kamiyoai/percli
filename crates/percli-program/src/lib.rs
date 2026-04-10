@@ -74,4 +74,37 @@ pub mod percli_program {
     pub fn withdraw_insurance(ctx: Context<WithdrawInsurance>, amount: u64) -> Result<()> {
         instructions::withdraw_insurance::handler(ctx, amount)
     }
+
+    pub fn top_up_insurance(ctx: Context<TopUpInsurance>, amount: u64) -> Result<()> {
+        instructions::top_up_insurance::handler(ctx, amount)
+    }
+
+    pub fn deposit_fee_credits(
+        ctx: Context<DepositFeeCredits>,
+        account_idx: u16,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::deposit_fee_credits::handler(ctx, account_idx, amount)
+    }
+
+    pub fn convert_released_pnl(
+        ctx: Context<ConvertReleasedPnl>,
+        account_idx: u16,
+        x_req: u64,
+        funding_rate: i64,
+    ) -> Result<()> {
+        instructions::convert_released_pnl::handler(ctx, account_idx, x_req, funding_rate)
+    }
+
+    pub fn accrue_market(ctx: Context<AccrueMarket>) -> Result<()> {
+        instructions::accrue_market::handler(ctx)
+    }
+
+    pub fn update_matcher(ctx: Context<UpdateMatcher>, new_matcher: Pubkey) -> Result<()> {
+        instructions::update_matcher::handler(ctx, new_matcher)
+    }
+
+    pub fn update_oracle(ctx: Context<UpdateOracle>) -> Result<()> {
+        instructions::update_oracle::handler(ctx)
+    }
 }
