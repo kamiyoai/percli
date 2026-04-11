@@ -107,4 +107,19 @@ pub mod percli_program {
     pub fn update_oracle(ctx: Context<UpdateOracle>) -> Result<()> {
         instructions::update_oracle::handler(ctx)
     }
+
+    pub fn migrate_header_v1(ctx: Context<MigrateHeaderV1>) -> Result<()> {
+        instructions::migrate_header_v1::handler(ctx)
+    }
+
+    pub fn transfer_authority(
+        ctx: Context<TransferAuthority>,
+        new_authority: Pubkey,
+    ) -> Result<()> {
+        instructions::transfer_authority::handler(ctx, new_authority)
+    }
+
+    pub fn accept_authority(ctx: Context<AcceptAuthority>) -> Result<()> {
+        instructions::accept_authority::handler(ctx)
+    }
 }

@@ -6,9 +6,14 @@ use crate::config::ChainConfig;
 use crate::ix::{self, InitializeMarketArgs, RiskParamsInput};
 use crate::rpc::ChainRpc;
 
-/// Market account size: 8 (discriminator) + 136 (header) + size_of::<RiskEngine>().
-/// Must match MARKET_ACCOUNT_SIZE in the on-chain program.
-const MARKET_ACCOUNT_SIZE: usize = 8 + 136 + std::mem::size_of::<percli_core::RiskEngine>();
+/// Market account size: 8 (discriminator) + 168 (v1 header) + size_of::<RiskEngine>().
+///
+/// Must be >= the on-chain program's `MARKET_ACCOUNT_SIZE`. Note that the SBF
+/// `size_of::<RiskEngine>()` differs from the host value by ~536 bytes due to
+/// `i128`/`u128` alignment in the large `[Account; MAX_ACCOUNTS]` array — the
+/// host value is *strictly larger*, so allocating with the host constant always
+/// satisfies the program's size check.
+const MARKET_ACCOUNT_SIZE: usize = 8 + 168 + std::mem::size_of::<percli_core::RiskEngine>();
 
 pub fn run(
     config: &ChainConfig,

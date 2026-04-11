@@ -31,7 +31,7 @@ pub fn handler(
     let market = &ctx.accounts.market;
     let mut data = market.try_borrow_mut_data()?;
 
-    require!(&data[0..8] == b"percmrkt", PercolatorError::AccountNotFound);
+    require!(crate::state::is_v1_market(&data), PercolatorError::AccountNotFound);
 
     // Verify signer is the designated matcher authority
     let header = header_from_account_data(&data)?;

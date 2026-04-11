@@ -186,6 +186,17 @@ pub enum ChainCommand {
         #[arg(long)]
         new_oracle: Pubkey,
     },
+    /// Migrate a v0.9.x market header to the v1.0 layout (authority only, one-time)
+    MigrateHeaderV1,
+    /// Initiate a two-step authority transfer (authority only).
+    /// Pass --new-authority <Pubkey::default()> (all zeros) to cancel an in-flight transfer.
+    TransferAuthority {
+        /// New authority pubkey
+        #[arg(long)]
+        new_authority: Pubkey,
+    },
+    /// Accept a pending authority transfer (must be signed by the pending authority)
+    AcceptAuthority,
     /// Query on-chain market or account state
     Query {
         /// What to query: "market" or an account index
@@ -265,6 +276,15 @@ pub fn run(
         }
         ChainCommand::UpdateOracle { new_oracle } => {
             percli_chain::commands::update_oracle::run(&config, &new_oracle)
+        }
+        ChainCommand::MigrateHeaderV1 => {
+            percli_chain::commands::migrate_header_v1::run(&config)
+        }
+        ChainCommand::TransferAuthority { new_authority } => {
+            percli_chain::commands::transfer_authority::run(&config, &new_authority)
+        }
+        ChainCommand::AcceptAuthority => {
+            percli_chain::commands::accept_authority::run(&config)
         }
         ChainCommand::Query { target } => {
             let qt = if target == "market" {

@@ -3,6 +3,8 @@ use sha2::{Digest, Sha256};
 use solana_program_test::*;
 #[allow(deprecated)]
 use solana_sdk::{
+    account::AccountSharedData,
+    clock::Clock,
     instruction::{AccountMeta, Instruction},
     program_pack::Pack,
     pubkey::Pubkey,
@@ -17,8 +19,13 @@ use solana_sdk::{
 
 const PROGRAM_ID_STR: &str = "PercQhVBxXnVCaAhfrPZFc2dVZcQANnwEYroogLJFwm";
 
-/// Must match MARKET_ACCOUNT_SIZE in the on-chain program.
-const MARKET_ACCOUNT_SIZE: usize = 8 + 136 + std::mem::size_of::<percli_core::RiskEngine>();
+/// Must match MARKET_ACCOUNT_SIZE in the on-chain program (v1 layout).
+/// 8 byte discriminator + 168 byte header + engine.
+const MARKET_ACCOUNT_SIZE: usize = 8 + 168 + std::mem::size_of::<percli_core::RiskEngine>();
+/// Pre-v1 (v0.9.x) account size — used by `migrate_header_v1` tests to
+/// simulate a legacy market that still needs migration.
+#[allow(dead_code)]
+const MARKET_ACCOUNT_SIZE_V0: usize = 8 + 136 + std::mem::size_of::<percli_core::RiskEngine>();
 
 fn program_id() -> Pubkey {
     PROGRAM_ID_STR.parse().unwrap()
@@ -661,7 +668,9 @@ async fn test_initialize_market() {
         .expect("market account should exist");
 
     assert_eq!(market_account.owner, program_id());
-    assert_eq!(&market_account.data[0..8], b"percmrkt");
+    // Discriminator is `percmrk` + version byte 0x01 (v1 layout).
+    assert_eq!(&market_account.data[0..7], b"percmrk");
+    assert_eq!(market_account.data[7], 0x01);
 }
 
 #[tokio::test]
@@ -1984,3 +1993,902 @@ async fn test_update_oracle_unauthorized() {
     let result = env.banks_client.process_transaction(tx).await;
     assert!(result.is_err(), "non-authority update_oracle should fail");
 }
+
+// ---------------------------------------------------------------------------
+// v1.0 instructions: migrate_header_v1, transfer_authority, accept_authority,
+// accrue_market, convert_released_pnl
+// ---------------------------------------------------------------------------
+
+const PYTH_PROGRAM_ID_STR: &str = "FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH";
+
+fn pyth_program_id() -> Pubkey {
+    PYTH_PROGRAM_ID_STR.parse().unwrap()
+}
+
+#[derive(BorshSerialize)]
+struct TransferAuthorityArgsTest {
+    new_authority: Pubkey,
+}
+
+#[derive(BorshSerialize)]
+struct ConvertReleasedPnlArgsTest {
+    account_idx: u16,
+    x_req: u64,
+    funding_rate: i64,
+}
+
+fn migrate_header_v1_ix(authority: &Pubkey, market: &Pubkey) -> Instruction {
+    build_ix(
+        &program_id(),
+        "migrate_header_v1",
+        (),
+        vec![
+            AccountMeta::new(*authority, true),
+            AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+fn transfer_authority_ix(
+    authority: &Pubkey,
+    market: &Pubkey,
+    new_authority: Pubkey,
+) -> Instruction {
+    build_ix(
+        &program_id(),
+        "transfer_authority",
+        TransferAuthorityArgsTest { new_authority },
+        vec![
+            AccountMeta::new_readonly(*authority, true),
+            AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+fn accept_authority_ix(new_authority: &Pubkey, market: &Pubkey) -> Instruction {
+    build_ix(
+        &program_id(),
+        "accept_authority",
+        (),
+        vec![
+            AccountMeta::new_readonly(*new_authority, true),
+            AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+fn accrue_market_ix(signer: &Pubkey, market: &Pubkey, oracle: &Pubkey) -> Instruction {
+    build_ix(
+        &program_id(),
+        "accrue_market",
+        (),
+        vec![
+            AccountMeta::new_readonly(*signer, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*oracle, false),
+        ],
+    )
+}
+
+fn convert_released_pnl_ix(
+    user: &Pubkey,
+    market: &Pubkey,
+    oracle: &Pubkey,
+    args: ConvertReleasedPnlArgsTest,
+) -> Instruction {
+    build_ix(
+        &program_id(),
+        "convert_released_pnl",
+        args,
+        vec![
+            AccountMeta::new_readonly(*user, true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new_readonly(*oracle, false),
+        ],
+    )
+}
+
+/// Construct a fully zero-initialised Pyth `SolanaPriceAccount` with just the
+/// fields the percli program checks: magic, ver, atype, expo, agg.price,
+/// agg.status, and timestamp.
+///
+/// Returns the raw bytes (`size_of::<SolanaPriceAccount>()` long) ready to drop
+/// into a `solana_sdk::account::Account` whose owner is the Pyth program ID.
+fn build_pyth_price_account(price: i64, expo: i32, timestamp: i64) -> Vec<u8> {
+    use pyth_sdk_solana::state::{
+        AccountType, PriceInfo, PriceStatus, SolanaPriceAccount, MAGIC, VERSION_2,
+    };
+
+    let mut pa = SolanaPriceAccount::default();
+    pa.magic = MAGIC;
+    pa.ver = VERSION_2;
+    pa.atype = AccountType::Price as u32;
+    pa.expo = expo;
+    pa.timestamp = timestamp;
+    pa.agg = PriceInfo {
+        price,
+        conf: 0,
+        status: PriceStatus::Trading,
+        ..Default::default()
+    };
+
+    bytemuck::bytes_of(&pa).to_vec()
+}
+
+/// Create a market account preloaded with the legacy v0.9 (136-byte header)
+/// layout, ready for `migrate_header_v1` to be called on it.
+///
+/// Layout (no Anchor framework involvement, all manual bytes):
+///   [0..8)         "percmrkt"
+///   [8..40)        authority pubkey
+///   [40..72)       mint pubkey
+///   [72..104)      oracle pubkey
+///   [104..136)     matcher pubkey
+///   [136]          bump
+///   [137]          vault_bump
+///   [138..144)     padding
+///   [144..144 + E) zeroed engine
+fn build_v0_market_data(
+    authority: &Pubkey,
+    mint: &Pubkey,
+    oracle: &Pubkey,
+    matcher: &Pubkey,
+    bump: u8,
+    vault_bump: u8,
+) -> Vec<u8> {
+    let mut data = vec![0u8; MARKET_ACCOUNT_SIZE_V0];
+    data[0..8].copy_from_slice(b"percmrkt");
+    data[8..40].copy_from_slice(authority.as_ref());
+    data[40..72].copy_from_slice(mint.as_ref());
+    data[72..104].copy_from_slice(oracle.as_ref());
+    data[104..136].copy_from_slice(matcher.as_ref());
+    data[136] = bump;
+    data[137] = vault_bump;
+    // bytes [138..144) and [144..) remain zero — engine is all-zero, which is a
+    // valid bit pattern for `RiskEngine` (it's `bytemuck::Pod`).
+    data
+}
+
+#[tokio::test]
+async fn test_migrate_header_v1_happy_path() {
+    let authority = Keypair::new();
+    let mint_key = Pubkey::new_unique();
+    let oracle = Pubkey::new_unique();
+    let matcher_key = Pubkey::new_unique();
+
+    let mut pt = program_test();
+    let (market, market_bump) = market_pda(&authority.pubkey());
+    let (_vault, vault_bump) = vault_pda(&market);
+
+    // Pre-create the market PDA at the *legacy* v0 size with valid v0 bytes.
+    let v0_data = build_v0_market_data(
+        &authority.pubkey(),
+        &mint_key,
+        &oracle,
+        &matcher_key,
+        market_bump,
+        vault_bump,
+    );
+    pt.add_account(
+        market,
+        solana_sdk::account::Account {
+            lamports: 100_000_000_000,
+            data: v0_data,
+            owner: program_id(),
+            executable: false,
+            rent_epoch: u64::MAX,
+        },
+    );
+
+    pt.add_account(
+        authority.pubkey(),
+        solana_sdk::account::Account {
+            lamports: 100_000_000_000_000,
+            data: vec![],
+            owner: solana_sdk::system_program::id(),
+            executable: false,
+            rent_epoch: u64::MAX,
+        },
+    );
+
+    let (mut banks_client, _payer, recent_blockhash) = pt.start().await;
+
+    // Sanity-check that the v0 layout was preserved through ProgramTest setup.
+    let pre = banks_client.get_account(market).await.unwrap().unwrap();
+    assert_eq!(
+        pre.data.len(),
+        MARKET_ACCOUNT_SIZE_V0,
+        "v0 account should be exactly MARKET_ACCOUNT_SIZE_V0 bytes before migration"
+    );
+    // Pre-migration discriminator: legacy `percmrkt` (last byte = 't' = 0x74).
+    assert_eq!(&pre.data[0..8], b"percmrkt");
+
+    let ix = migrate_header_v1_ix(&authority.pubkey(), &market);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&authority.pubkey()),
+        &[&authority],
+        recent_blockhash,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Verify post-migration state. The migration is performed in-place
+    // without realloc, so `data.len()` is unchanged from the pre-migration
+    // host-side V0 size. The other instruction handlers check
+    // `data_len() >= MARKET_ACCOUNT_SIZE` (SBF size), which is satisfied
+    // because real-chain v0 accounts are strictly larger than SBF v1 size.
+    let acct = banks_client.get_account(market).await.unwrap().unwrap();
+    assert_eq!(
+        acct.data.len(),
+        MARKET_ACCOUNT_SIZE_V0,
+        "in-place migration does not resize the account"
+    );
+    // Discriminator now carries the v1 version byte (0x01) at offset [7].
+    assert_eq!(&acct.data[0..7], b"percmrk");
+    assert_eq!(acct.data[7], 0x01, "version byte stamped to v1 (0x01)");
+    assert_eq!(&acct.data[8..40], authority.pubkey().as_ref(), "authority preserved");
+    assert_eq!(&acct.data[40..72], mint_key.as_ref(), "mint preserved");
+    assert_eq!(&acct.data[72..104], oracle.as_ref(), "oracle preserved");
+    assert_eq!(&acct.data[104..136], matcher_key.as_ref(), "matcher preserved");
+    assert_eq!(&acct.data[136..168], Pubkey::default().as_ref(), "pending_authority is default");
+    assert_eq!(acct.data[168], market_bump, "bump preserved");
+    assert_eq!(acct.data[169], vault_bump, "vault_bump preserved");
+}
+
+#[tokio::test]
+async fn test_migrate_header_v1_double_fails() {
+    // Set up a normal v1 market via the existing helper, then try to migrate.
+    // It should fail with NotLegacyLayout / AlreadyMigrated because the account
+    // is already at the v1 size.
+    let mut env = setup_market().await;
+
+    let ix = migrate_header_v1_ix(&env.authority.pubkey(), &env.market);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(
+        result.is_err(),
+        "migrate_header_v1 against an already-v1 account should fail"
+    );
+}
+
+#[tokio::test]
+async fn test_migrate_header_v1_wrong_authority() {
+    let real_authority = Keypair::new();
+    let intruder = Keypair::new();
+    let mint_key = Pubkey::new_unique();
+    let oracle = Pubkey::new_unique();
+    let matcher_key = Pubkey::new_unique();
+
+    let mut pt = program_test();
+    let (market, market_bump) = market_pda(&real_authority.pubkey());
+    let (_vault, vault_bump) = vault_pda(&market);
+
+    let v0_data = build_v0_market_data(
+        &real_authority.pubkey(),
+        &mint_key,
+        &oracle,
+        &matcher_key,
+        market_bump,
+        vault_bump,
+    );
+    pt.add_account(
+        market,
+        solana_sdk::account::Account {
+            lamports: 100_000_000_000,
+            data: v0_data,
+            owner: program_id(),
+            executable: false,
+            rent_epoch: u64::MAX,
+        },
+    );
+    pt.add_account(
+        intruder.pubkey(),
+        solana_sdk::account::Account {
+            lamports: 100_000_000_000_000,
+            data: vec![],
+            owner: solana_sdk::system_program::id(),
+            executable: false,
+            rent_epoch: u64::MAX,
+        },
+    );
+
+    let (mut banks_client, _payer, recent_blockhash) = pt.start().await;
+
+    let ix = migrate_header_v1_ix(&intruder.pubkey(), &market);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&intruder.pubkey()),
+        &[&intruder],
+        recent_blockhash,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    assert!(
+        result.is_err(),
+        "migrate_header_v1 with non-authority signer should fail"
+    );
+}
+
+#[tokio::test]
+async fn test_transfer_and_accept_authority_happy_path() {
+    let mut env = setup_market().await;
+    let new_authority = Keypair::new();
+
+    // Fund new_authority with SOL so it can sign.
+    let transfer_ix = system_instruction::transfer(
+        &env.authority.pubkey(),
+        &new_authority.pubkey(),
+        1_000_000_000,
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Step 1: old authority initiates the transfer.
+    let ix = transfer_authority_ix(&env.authority.pubkey(), &env.market, new_authority.pubkey());
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // After step 1: header.authority is unchanged, header.pending_authority is the new key.
+    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
+    assert_eq!(&acct.data[8..40], env.authority.pubkey().as_ref(), "authority unchanged after initiate");
+    assert_eq!(&acct.data[136..168], new_authority.pubkey().as_ref(), "pending_authority set");
+
+    // Step 2: new authority accepts.
+    let ix = accept_authority_ix(&new_authority.pubkey(), &env.market);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&new_authority.pubkey()),
+        &[&new_authority],
+        env.recent_blockhash,
+    );
+    env.banks_client.process_transaction(tx).await.unwrap();
+
+    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
+    assert_eq!(&acct.data[8..40], new_authority.pubkey().as_ref(), "authority rotated");
+    assert_eq!(&acct.data[136..168], Pubkey::default().as_ref(), "pending_authority cleared");
+}
+
+#[tokio::test]
+async fn test_accept_authority_wrong_signer_fails() {
+    let mut env = setup_market().await;
+    let pending = Keypair::new();
+    let intruder = Keypair::new();
+
+    // Fund both
+    for pk in [pending.pubkey(), intruder.pubkey()] {
+        let transfer_ix =
+            system_instruction::transfer(&env.authority.pubkey(), &pk, 1_000_000_000);
+        let tx = Transaction::new_signed_with_payer(
+            &[transfer_ix],
+            Some(&env.authority.pubkey()),
+            &[&env.authority],
+            env.recent_blockhash,
+        );
+        env.banks_client.process_transaction(tx).await.unwrap();
+        env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    }
+
+    // Initiate the transfer to `pending`
+    let ix = transfer_authority_ix(&env.authority.pubkey(), &env.market, pending.pubkey());
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Intruder tries to accept — should fail.
+    let ix = accept_authority_ix(&intruder.pubkey(), &env.market);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&intruder.pubkey()),
+        &[&intruder],
+        env.recent_blockhash,
+    );
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "non-pending signer should be rejected");
+
+    // And the original authority should still be in place.
+    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
+    assert_eq!(&acct.data[8..40], env.authority.pubkey().as_ref(), "authority unchanged after failed accept");
+}
+
+#[tokio::test]
+async fn test_transfer_authority_cancel() {
+    let mut env = setup_market().await;
+    let pending = Keypair::new();
+
+    // Initiate transfer
+    let ix = transfer_authority_ix(&env.authority.pubkey(), &env.market, pending.pubkey());
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Cancel by sending Pubkey::default()
+    let ix = transfer_authority_ix(&env.authority.pubkey(), &env.market, Pubkey::default());
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
+    assert_eq!(&acct.data[136..168], Pubkey::default().as_ref(), "pending cleared after cancel");
+
+    // And `pending` can no longer accept (NoPendingAuthority).
+    // Fund pending so the signer check happens, not lamports.
+    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &pending.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let ix = accept_authority_ix(&pending.pubkey(), &env.market);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&pending.pubkey()),
+        &[&pending],
+        env.recent_blockhash,
+    );
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "accept after cancel must fail");
+}
+
+#[tokio::test]
+async fn test_transfer_authority_self_transfer_rejected() {
+    // Self-transfer is a no-op and adds event noise — the program rejects it
+    // with `Unauthorized` rather than emitting a confusing
+    // `AuthorityTransferInitiated`.
+    let mut env = setup_market().await;
+
+    let ix = transfer_authority_ix(&env.authority.pubkey(), &env.market, env.authority.pubkey());
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "self-transfer must be rejected");
+
+    // The header should be untouched.
+    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
+    assert_eq!(&acct.data[8..40], env.authority.pubkey().as_ref(), "authority unchanged");
+    assert_eq!(
+        &acct.data[136..168],
+        Pubkey::default().as_ref(),
+        "pending_authority unchanged"
+    );
+}
+
+#[tokio::test]
+async fn test_transfer_authority_overwrite_pending() {
+    // Initiating a transfer to a different pubkey while one is already
+    // in flight is intentional (lets the authority change their mind).
+    // The previous pending key loses its claim and can no longer accept.
+    let mut env = setup_market().await;
+    let first = Keypair::new();
+    let second = Keypair::new();
+
+    // Fund both so they can sign.
+    for pk in [first.pubkey(), second.pubkey()] {
+        let transfer_ix =
+            system_instruction::transfer(&env.authority.pubkey(), &pk, 1_000_000_000);
+        let tx = Transaction::new_signed_with_payer(
+            &[transfer_ix],
+            Some(&env.authority.pubkey()),
+            &[&env.authority],
+            env.recent_blockhash,
+        );
+        env.banks_client.process_transaction(tx).await.unwrap();
+        env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    }
+
+    // Initiate to `first`.
+    let ix = transfer_authority_ix(&env.authority.pubkey(), &env.market, first.pubkey());
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Overwrite with `second`.
+    let ix = transfer_authority_ix(&env.authority.pubkey(), &env.market, second.pubkey());
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    env.banks_client.process_transaction(tx).await.unwrap();
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    // pending_authority is now `second`.
+    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
+    assert_eq!(&acct.data[136..168], second.pubkey().as_ref(), "pending overwritten to second");
+
+    // `first` can no longer accept.
+    let ix = accept_authority_ix(&first.pubkey(), &env.market);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&first.pubkey()),
+        &[&first],
+        env.recent_blockhash,
+    );
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "first must no longer be able to accept");
+
+    // `second` can.
+    let ix = accept_authority_ix(&second.pubkey(), &env.market);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&second.pubkey()),
+        &[&second],
+        env.recent_blockhash,
+    );
+    env.banks_client.process_transaction(tx).await.unwrap();
+
+    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
+    assert_eq!(&acct.data[8..40], second.pubkey().as_ref(), "authority rotated to second");
+}
+
+#[tokio::test]
+async fn test_migrate_header_v1_corrupted_bump_rejected() {
+    // A v0 account whose `bump` byte doesn't match the canonical PDA bump
+    // (e.g. corrupted on disk or maliciously crafted) must be rejected by
+    // the migration handler with `CorruptState`.
+    let authority = Keypair::new();
+    let mint_key = Pubkey::new_unique();
+    let oracle = Pubkey::new_unique();
+    let matcher_key = Pubkey::new_unique();
+
+    let mut pt = program_test();
+    let (market, market_bump) = market_pda(&authority.pubkey());
+    let (_vault, vault_bump) = vault_pda(&market);
+
+    // Build the v0 buffer with the wrong bump byte (canonical bump XOR 0xFF
+    // is guaranteed to differ since canonical bumps are 0..=255 and the XOR
+    // flips every bit).
+    let mut v0_data = build_v0_market_data(
+        &authority.pubkey(),
+        &mint_key,
+        &oracle,
+        &matcher_key,
+        market_bump.wrapping_add(1),
+        vault_bump,
+    );
+    // Defensive: just in case wrapping_add(1) somehow lands on the canonical
+    // bump (it can't, but be safe), force it to a known-wrong value.
+    if v0_data[136] == market_bump {
+        v0_data[136] = market_bump.wrapping_sub(1);
+    }
+    pt.add_account(
+        market,
+        solana_sdk::account::Account {
+            lamports: 100_000_000_000,
+            data: v0_data,
+            owner: program_id(),
+            executable: false,
+            rent_epoch: u64::MAX,
+        },
+    );
+    pt.add_account(
+        authority.pubkey(),
+        solana_sdk::account::Account {
+            lamports: 100_000_000_000_000,
+            data: vec![],
+            owner: solana_sdk::system_program::id(),
+            executable: false,
+            rent_epoch: u64::MAX,
+        },
+    );
+
+    let (mut banks_client, _payer, recent_blockhash) = pt.start().await;
+
+    let ix = migrate_header_v1_ix(&authority.pubkey(), &market);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&authority.pubkey()),
+        &[&authority],
+        recent_blockhash,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    assert!(
+        result.is_err(),
+        "migrate_header_v1 with corrupted bump must be rejected"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Pyth-backed tests (accrue_market, convert_released_pnl)
+//
+// These need a Pyth-owned oracle account whose `timestamp` is within
+// MAX_PRICE_AGE_SECS (60s) of the runtime clock. We use `start_with_context`
+// + `set_sysvar` to nail the clock to a known value, then construct the price
+// account with a matching timestamp.
+// ---------------------------------------------------------------------------
+
+const PINNED_UNIX_TS: i64 = 1_700_000_000;
+
+/// Set up a complete market (init + deposit) with a Pyth-backed oracle.
+/// Returns context, market PDA, vault PDA, mint, authority, oracle.
+struct PythTestEnv {
+    context: ProgramTestContext,
+    authority: Keypair,
+    market: Pubkey,
+    vault: Pubkey,
+    mint: Pubkey,
+    oracle: Pubkey,
+}
+
+async fn setup_pyth_market(price: i64, expo: i32) -> PythTestEnv {
+    let authority = Keypair::new();
+    let matcher = Keypair::new();
+    let oracle = Pubkey::new_unique();
+
+    let mut pt = program_test();
+    let (market, _bump) = market_pda(&authority.pubkey());
+    let (vault, _vbump) = vault_pda(&market);
+
+    pt.add_account(
+        market,
+        solana_sdk::account::Account {
+            lamports: 100_000_000_000,
+            data: vec![0u8; MARKET_ACCOUNT_SIZE],
+            owner: program_id(),
+            executable: false,
+            rent_epoch: u64::MAX,
+        },
+    );
+
+    // Pyth-owned oracle preloaded with a Trading price at PINNED_UNIX_TS.
+    let oracle_data = build_pyth_price_account(price, expo, PINNED_UNIX_TS);
+    pt.add_account(
+        oracle,
+        solana_sdk::account::Account {
+            lamports: 1_000_000_000,
+            data: oracle_data,
+            owner: pyth_program_id(),
+            executable: false,
+            rent_epoch: u64::MAX,
+        },
+    );
+
+    pt.add_account(
+        authority.pubkey(),
+        solana_sdk::account::Account {
+            lamports: 100_000_000_000_000,
+            data: vec![],
+            owner: solana_sdk::system_program::id(),
+            executable: false,
+            rent_epoch: u64::MAX,
+        },
+    );
+
+    let mut context = pt.start_with_context().await;
+
+    // Pin the runtime clock to PINNED_UNIX_TS so the freshness check passes.
+    let mut clock: Clock = context.banks_client.get_sysvar().await.unwrap();
+    clock.unix_timestamp = PINNED_UNIX_TS;
+    context.set_sysvar(&clock);
+
+    // Create mint.
+    let mint_kp = create_mint(
+        &mut context.banks_client,
+        &authority,
+        context.last_blockhash,
+        6,
+    )
+    .await;
+    let mint = mint_kp.pubkey();
+
+    let recent_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+    let slot = context.banks_client.get_root_slot().await.unwrap();
+
+    let ix = initialize_market_ix(
+        &authority.pubkey(),
+        &market,
+        &mint,
+        &vault,
+        &oracle,
+        &matcher.pubkey(),
+        InitializeMarketArgs {
+            init_slot: slot,
+            init_oracle_price: 1000,
+            params: default_risk_params(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&authority.pubkey()),
+        &[&authority],
+        recent_blockhash,
+    );
+    context.banks_client.process_transaction(tx).await.unwrap();
+
+    // Re-pin the clock — initialize_market may have advanced it via tick.
+    let mut clock: Clock = context.banks_client.get_sysvar().await.unwrap();
+    clock.unix_timestamp = PINNED_UNIX_TS;
+    context.set_sysvar(&clock);
+
+    PythTestEnv {
+        context,
+        authority,
+        market,
+        vault,
+        mint,
+        oracle,
+    }
+}
+
+#[tokio::test]
+async fn test_accrue_market_with_pyth() {
+    // 1234.5 USDC, expo = -1, so on-chain oracle_price = 1234 / 10^1... wait,
+    // expo=-1 means divisor=10, price=12345 -> 1234. Use price=1500, expo=0
+    // for a clean 1500.
+    let mut env = setup_pyth_market(1500, 0).await;
+
+    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+
+    let ix = accrue_market_ix(&env.authority.pubkey(), &env.market, &env.oracle);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        blockhash,
+    );
+    env.context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .expect("accrue_market should succeed with a fresh Trading Pyth feed");
+}
+
+#[tokio::test]
+async fn test_accrue_market_stale_price_fails() {
+    let mut env = setup_pyth_market(1500, 0).await;
+
+    // Push the clock 5 minutes into the future relative to the price account
+    // timestamp — well outside MAX_PRICE_AGE_SECS (60s).
+    let mut clock: Clock = env.context.banks_client.get_sysvar().await.unwrap();
+    clock.unix_timestamp = PINNED_UNIX_TS + 300;
+    env.context.set_sysvar(&clock);
+
+    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+
+    let ix = accrue_market_ix(&env.authority.pubkey(), &env.market, &env.oracle);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        blockhash,
+    );
+    let result = env.context.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "stale Pyth price should be rejected");
+}
+
+#[tokio::test]
+async fn test_accrue_market_wrong_oracle_owner_fails() {
+    // Use the standard non-Pyth setup_market — its oracle stub is owned by a
+    // random program, so the AccrueMarket account constraint must reject it.
+    let mut env = setup_market().await;
+
+    let ix = accrue_market_ix(&env.authority.pubkey(), &env.market, &env.oracle);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
+    let result = env.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "non-Pyth-owned oracle must be rejected");
+}
+
+#[tokio::test]
+async fn test_convert_released_pnl_with_pyth() {
+    // Bootstrap a Pyth-backed market, deposit collateral so the user has an
+    // account slot, then call convert_released_pnl. With zero released PnL it
+    // should be a no-op success.
+    let mut env = setup_pyth_market(1500, 0).await;
+
+    // Create user's ATA + mint to it
+    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+    let user_ata = create_ata(
+        &mut env.context.banks_client,
+        &env.authority,
+        blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
+    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+    mint_to(
+        &mut env.context.banks_client,
+        &env.authority,
+        blockhash,
+        &env.mint,
+        &user_ata,
+        10_000_000,
+    )
+    .await;
+    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+
+    // Deposit to slot 0 so we have an account to convert against.
+    let ix = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &user_ata,
+        &env.vault,
+        DepositArgs { account_idx: 0, amount: 1_000_000 },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        blockhash,
+    );
+    env.context.banks_client.process_transaction(tx).await.unwrap();
+
+    // Re-pin clock again after the deposit tick.
+    let mut clock: Clock = env.context.banks_client.get_sysvar().await.unwrap();
+    clock.unix_timestamp = PINNED_UNIX_TS;
+    env.context.set_sysvar(&clock);
+
+    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+    let ix = convert_released_pnl_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.oracle,
+        ConvertReleasedPnlArgsTest { account_idx: 0, x_req: 0, funding_rate: 0 },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        blockhash,
+    );
+    // x_req=0 should always succeed (it's a no-op convert).
+    env.context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .expect("convert_released_pnl with x_req=0 should succeed");
+}
+
+// Suppress unused-warning for AccountSharedData re-export.
+#[allow(dead_code)]
+fn _ensure_account_shared_data_imported(_: AccountSharedData) {}

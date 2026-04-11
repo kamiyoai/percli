@@ -64,7 +64,7 @@ pub fn handler(ctx: Context<Deposit>, account_idx: u16, amount: u64) -> Result<(
     let mut data = market.try_borrow_mut_data()?;
 
     require!(
-        &data[0..8] == b"percmrkt",
+        crate::state::is_v1_market(&data),
         PercolatorError::AccountNotFound
     );
 

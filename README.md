@@ -265,6 +265,16 @@ percli chain update-matcher --new-matcher <NEW_MATCHER_PUBKEY>
 # Rotate oracle feed (authority only)
 percli chain update-oracle --new-oracle <NEW_ORACLE_PUBKEY>
 
+# Migrate a v0.9.x market header to the v1.0 layout (authority only, one-shot)
+percli chain migrate-header-v1
+
+# Two-step authority transfer (authority proposes, new authority accepts)
+percli chain transfer-authority --new-authority <NEW_AUTH_PUBKEY>
+percli chain accept-authority   # signed by the new authority
+
+# Cancel a pending authority transfer
+percli chain transfer-authority --new-authority 11111111111111111111111111111111
+
 # Query on-chain state
 percli chain query market
 percli chain query 0   # query account at index 0
@@ -273,6 +283,8 @@ percli chain query 0   # query account at index 0
 Global options: `--rpc <url>`, `--keypair <path>`, `--program <pubkey>`.
 
 The on-chain program (`percli-program`) is an Anchor 1.0 program that wraps the Percolator engine in a Solana PDA. See [`Anchor.toml`](Anchor.toml) for deployment config.
+
+For end-to-end deployment, market initialization, header migration, authority handoff, and a mainnet checklist, see [**DEPLOYMENT.md**](DEPLOYMENT.md). For the canonical instruction wire format (discriminators, account layouts, error codes), see [**ABI.md**](ABI.md).
 
 ## Keeper Bot
 

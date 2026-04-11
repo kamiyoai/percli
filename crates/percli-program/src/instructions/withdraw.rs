@@ -56,7 +56,7 @@ pub fn handler(
     let mut data = market.try_borrow_mut_data()?;
 
     require!(
-        &data[0..8] == b"percmrkt",
+        crate::state::is_v1_market(&data),
         PercolatorError::AccountNotFound
     );
 

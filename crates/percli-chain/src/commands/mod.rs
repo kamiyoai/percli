@@ -1,3 +1,4 @@
+pub mod accept_authority;
 pub mod accrue_market;
 pub mod close;
 pub mod convert_released_pnl;
@@ -6,11 +7,13 @@ pub mod deploy;
 pub mod deposit;
 pub mod deposit_fee_credits;
 pub mod liquidate;
+pub mod migrate_header_v1;
 pub mod query;
 pub mod reclaim;
 pub mod settle;
 pub mod top_up_insurance;
 pub mod trade;
+pub mod transfer_authority;
 pub mod update_matcher;
 pub mod update_oracle;
 pub mod withdraw;

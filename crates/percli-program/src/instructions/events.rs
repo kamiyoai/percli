@@ -111,3 +111,37 @@ pub struct OracleUpdated {
     pub old_oracle: Pubkey,
     pub new_oracle: Pubkey,
 }
+
+#[event]
+pub struct HeaderMigrated {
+    pub authority: Pubkey,
+    pub market: Pubkey,
+    pub mint: Pubkey,
+    pub oracle: Pubkey,
+    pub matcher: Pubkey,
+    /// Actual on-chain `data.len()` of the market account after migration.
+    /// Migration is in-place (no realloc), so this equals the v0 account size.
+    pub account_size: u64,
+}
+
+#[event]
+pub struct AuthorityTransferInitiated {
+    pub market: Pubkey,
+    pub old_authority: Pubkey,
+    pub pending_authority: Pubkey,
+}
+
+#[event]
+pub struct AuthorityTransferCancelled {
+    pub market: Pubkey,
+    pub authority: Pubkey,
+    /// The pending_authority that was discarded.
+    pub previous_pending: Pubkey,
+}
+
+#[event]
+pub struct AuthorityAccepted {
+    pub market: Pubkey,
+    pub old_authority: Pubkey,
+    pub new_authority: Pubkey,
+}

@@ -137,6 +137,11 @@ pub struct UpdateMatcherArgs {
     pub new_matcher: Pubkey,
 }
 
+#[derive(BorshSerialize)]
+pub struct TransferAuthorityArgs {
+    pub new_authority: Pubkey,
+}
+
 // --- Instruction builders ---
 
 pub fn initialize_market_ix(
@@ -464,6 +469,55 @@ pub fn update_oracle_ix(
             AccountMeta::new_readonly(*authority, true),
             AccountMeta::new(*market, false),
             AccountMeta::new_readonly(*new_oracle, false),
+        ],
+    )
+}
+
+pub fn migrate_header_v1_ix(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    authority: &Pubkey,
+) -> Instruction {
+    build_ix(
+        program_id,
+        "migrate_header_v1",
+        (),
+        vec![
+            AccountMeta::new(*authority, true),
+            AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+pub fn transfer_authority_ix(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    authority: &Pubkey,
+    args: TransferAuthorityArgs,
+) -> Instruction {
+    build_ix(
+        program_id,
+        "transfer_authority",
+        args,
+        vec![
+            AccountMeta::new_readonly(*authority, true),
+            AccountMeta::new(*market, false),
+        ],
+    )
+}
+
+pub fn accept_authority_ix(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    new_authority: &Pubkey,
+) -> Instruction {
+    build_ix(
+        program_id,
+        "accept_authority",
+        (),
+        vec![
+            AccountMeta::new_readonly(*new_authority, true),
+            AccountMeta::new(*market, false),
         ],
     )
 }

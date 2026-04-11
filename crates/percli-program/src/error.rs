@@ -36,6 +36,12 @@ pub enum PercolatorError {
     InvalidOraclePriceValue,
     #[msg("Deposit amount exceeds u64 token limit")]
     AmountOverflow,
+    #[msg("Market header is already at the v1 layout")]
+    AlreadyMigrated,
+    #[msg("Market header is not a legacy v0 layout")]
+    NotLegacyLayout,
+    #[msg("No authority transfer is pending")]
+    NoPendingAuthority,
 }
 
 pub fn from_risk_error(e: percli_core::RiskError) -> Error {

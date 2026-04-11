@@ -35,7 +35,7 @@ pub fn handler(ctx: Context<Crank>, funding_rate: i64) -> Result<()> {
     // Verify the oracle account matches the one stored in the market header
     {
         let data = ctx.accounts.market.try_borrow_data()?;
-        require!(&data[0..8] == b"percmrkt", PercolatorError::AccountNotFound);
+        require!(crate::state::is_v1_market(&data), PercolatorError::AccountNotFound);
         let header = header_from_account_data(&data)?;
         require!(
             header.oracle == ctx.accounts.oracle.key(),
@@ -96,7 +96,7 @@ pub fn handler(ctx: Context<Crank>, funding_rate: i64) -> Result<()> {
     let mut data = market.try_borrow_mut_data()?;
 
     require!(
-        &data[0..8] == b"percmrkt",
+        crate::state::is_v1_market(&data),
         PercolatorError::AccountNotFound
     );
 

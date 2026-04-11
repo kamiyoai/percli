@@ -65,14 +65,18 @@ pub fn handler(
         PercolatorError::AccountNotFound
     );
 
-    // Write discriminator (first 8 bytes) — use a fixed marker
-    data[0..8].copy_from_slice(b"percmrkt");
+    // Write discriminator: 7 fixed bytes + 1 layout-version byte (`0x01` = v1).
+    // The version byte at offset [7] is what `migrate_header_v1` reads to
+    // distinguish v0 (`0x74` = `'t'`) from v1 (`0x01`) accounts.
+    data[0..7].copy_from_slice(b"percmrk");
+    data[7] = 0x01;
 
     let header = MarketHeader {
         authority: ctx.accounts.authority.key(),
         mint: ctx.accounts.mint.key(),
         oracle: ctx.accounts.oracle.key(),
         matcher: ctx.accounts.matcher.key(),
+        pending_authority: Pubkey::default(),
         bump: ctx.bumps.market,
         vault_bump: ctx.bumps.vault,
         _padding: [0; 6],

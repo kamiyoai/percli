@@ -22,7 +22,7 @@ pub fn handler(ctx: Context<UpdateMatcher>, new_matcher: Pubkey) -> Result<()> {
     let mut data = market.try_borrow_mut_data()?;
 
     require!(
-        &data[0..8] == b"percmrkt",
+        crate::state::is_v1_market(&data),
         PercolatorError::AccountNotFound
     );
 
