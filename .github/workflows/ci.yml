@@ -80,7 +80,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/solana/install
-          key: solana-${{ env.SOLANA_CLI_VERSION }}-${{ runner.os }}
+          key: solana-${{ env.SOLANA_CLI_VERSION }}-platform-tools-${{ runner.os }}
 
       - name: Install Solana CLI
         if: steps.solana-cache.outputs.cache-hit != 'true'
@@ -95,7 +95,6 @@ jobs:
       - name: Build SBF artifact
         run: |
           cargo build-sbf \
-            --skip-tools-install \
             --manifest-path crates/percli-program/Cargo.toml
 
       - name: Run on-chain integration tests
