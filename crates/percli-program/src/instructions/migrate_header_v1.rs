@@ -103,10 +103,7 @@ pub fn handler(ctx: Context<MigrateHeaderV1>) -> Result<()> {
             data.len() >= 8 + MarketHeader::SIZE + std::mem::size_of::<RiskEngine>(),
             PercolatorError::AccountNotFound
         );
-        require!(
-            &data[0..7] == b"percmrk",
-            PercolatorError::AccountNotFound
-        );
+        require!(&data[0..7] == b"percmrk", PercolatorError::AccountNotFound);
         // Version byte: v0 = 0x74 ('t'), v1 = 0x01.
         // The order of these two checks matters for error reporting:
         // a non-v0, non-v1 byte falls through to NotLegacyLayout (correct).
@@ -132,10 +129,7 @@ pub fn handler(ctx: Context<MigrateHeaderV1>) -> Result<()> {
         expected_market == market_info.key(),
         PercolatorError::AccountNotFound
     );
-    require!(
-        expected_bump == v0.bump,
-        PercolatorError::CorruptState
-    );
+    require!(expected_bump == v0.bump, PercolatorError::CorruptState);
 
     // -----------------------------------------------------------------------
     // 2. Shift the engine bytes forward by 32 (in-place, no realloc).

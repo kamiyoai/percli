@@ -89,7 +89,11 @@ pub fn run(config: &ChainConfig, interval_secs: u64, pyth_feed: &str) -> Result<
         match percli_chain::commands::crank::run(config, &oracle, 0) {
             Ok(()) => {
                 stats.total_cranks += 1;
-                debug!(tick, elapsed_ms = crank_start.elapsed().as_millis() as u64, "crank success");
+                debug!(
+                    tick,
+                    elapsed_ms = crank_start.elapsed().as_millis() as u64,
+                    "crank success"
+                );
             }
             Err(e) => {
                 stats.failed_cranks += 1;
@@ -109,7 +113,11 @@ pub fn run(config: &ChainConfig, interval_secs: u64, pyth_feed: &str) -> Result<
             }
             let above_mm = engine.is_above_maintenance_margin(acct, i, engine.last_oracle_price);
             if !above_mm {
-                info!(tick, account_idx = i, "liquidating (below maintenance margin)");
+                info!(
+                    tick,
+                    account_idx = i,
+                    "liquidating (below maintenance margin)"
+                );
                 match percli_chain::commands::liquidate::run(config, i as u16, 0) {
                     Ok(()) => {
                         stats.total_liquidations += 1;

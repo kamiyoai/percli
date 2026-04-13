@@ -9,12 +9,7 @@ pub fn run(config: &ChainConfig, oracle: &Pubkey) -> Result<()> {
     let rpc = ChainRpc::new(&config.rpc_url);
     let (market_pda, _) = config.market_pda();
 
-    let ix = ix::accrue_market_ix(
-        &config.program_id,
-        &market_pda,
-        &config.authority(),
-        oracle,
-    );
+    let ix = ix::accrue_market_ix(&config.program_id, &market_pda, &config.authority(), oracle);
 
     println!("Accruing market state...");
     let sig = rpc.send_tx(&[ix], &config.keypair)?;

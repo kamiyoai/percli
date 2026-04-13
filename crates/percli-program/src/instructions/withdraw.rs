@@ -61,7 +61,10 @@ pub fn handler(
     );
 
     let header = header_from_account_data(&data)?;
-    require!(header.mint == ctx.accounts.mint.key(), PercolatorError::Unauthorized);
+    require!(
+        header.mint == ctx.accounts.mint.key(),
+        PercolatorError::Unauthorized
+    );
 
     let engine = engine_from_account_data(&mut data);
 
@@ -77,7 +80,13 @@ pub fn handler(
 
     // Engine validates margin requirements before allowing withdrawal
     engine
-        .withdraw_not_atomic(account_idx, amount as u128, oracle_price, clock.slot, funding_rate)
+        .withdraw_not_atomic(
+            account_idx,
+            amount as u128,
+            oracle_price,
+            clock.slot,
+            funding_rate,
+        )
         .map_err(from_risk_error)?;
 
     // Drop the borrow before CPI

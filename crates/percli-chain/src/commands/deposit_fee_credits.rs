@@ -24,7 +24,10 @@ pub fn run(
         user_token_account,
         &vault,
         &spl_token::id(),
-        DepositFeeCreditsArgs { account_idx, amount },
+        DepositFeeCreditsArgs {
+            account_idx,
+            amount,
+        },
     );
 
     println!("Depositing {amount} fee credits for account {account_idx}...");

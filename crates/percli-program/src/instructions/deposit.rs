@@ -69,7 +69,10 @@ pub fn handler(ctx: Context<Deposit>, account_idx: u16, amount: u64) -> Result<(
     );
 
     let header = header_from_account_data(&data)?;
-    require!(header.mint == ctx.accounts.mint.key(), PercolatorError::Unauthorized);
+    require!(
+        header.mint == ctx.accounts.mint.key(),
+        PercolatorError::Unauthorized
+    );
 
     let engine = engine_from_account_data(&mut data);
 
@@ -78,7 +81,10 @@ pub fn handler(ctx: Context<Deposit>, account_idx: u16, amount: u64) -> Result<(
     if engine.is_used(account_idx as usize) {
         let existing_owner = engine.accounts[account_idx as usize].owner;
         if existing_owner != [0u8; 32] {
-            require!(existing_owner == user_key.to_bytes(), PercolatorError::Unauthorized);
+            require!(
+                existing_owner == user_key.to_bytes(),
+                PercolatorError::Unauthorized
+            );
         }
     }
 

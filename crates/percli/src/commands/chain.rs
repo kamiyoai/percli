@@ -213,19 +213,32 @@ pub fn run(
     let config = ChainConfig::new(rpc, keypair, program)?;
 
     match cmd {
-        ChainCommand::Deploy { mint, oracle, matcher, init_price } => {
-            percli_chain::commands::deploy::run(&config, &mint, &oracle, &matcher, init_price)
-        }
-        ChainCommand::Deposit { idx, amount, mint, token_account } => {
-            percli_chain::commands::deposit::run(&config, idx, amount, &mint, &token_account)
-        }
+        ChainCommand::Deploy {
+            mint,
+            oracle,
+            matcher,
+            init_price,
+        } => percli_chain::commands::deploy::run(&config, &mint, &oracle, &matcher, init_price),
+        ChainCommand::Deposit {
+            idx,
+            amount,
+            mint,
+            token_account,
+        } => percli_chain::commands::deposit::run(&config, idx, amount, &mint, &token_account),
         ChainCommand::Withdraw {
             idx,
             amount,
             funding_rate,
             mint,
             token_account,
-        } => percli_chain::commands::withdraw::run(&config, idx, amount, funding_rate, &mint, &token_account),
+        } => percli_chain::commands::withdraw::run(
+            &config,
+            idx,
+            amount,
+            funding_rate,
+            &mint,
+            &token_account,
+        ),
         ChainCommand::Trade {
             account_a,
             account_b,
@@ -253,21 +266,43 @@ pub fn run(
         ChainCommand::Close { idx, funding_rate } => {
             percli_chain::commands::close::run(&config, idx, funding_rate)
         }
-        ChainCommand::Reclaim { idx } => {
-            percli_chain::commands::reclaim::run(&config, idx)
-        }
-        ChainCommand::WithdrawInsurance { amount, mint, token_account } => {
+        ChainCommand::Reclaim { idx } => percli_chain::commands::reclaim::run(&config, idx),
+        ChainCommand::WithdrawInsurance {
+            amount,
+            mint,
+            token_account,
+        } => {
             percli_chain::commands::withdraw_insurance::run(&config, amount, &mint, &token_account)
         }
-        ChainCommand::TopUpInsurance { amount, mint, token_account } => {
-            percli_chain::commands::top_up_insurance::run(&config, amount, &mint, &token_account)
-        }
-        ChainCommand::DepositFeeCredits { idx, amount, mint, token_account } => {
-            percli_chain::commands::deposit_fee_credits::run(&config, idx, amount, &mint, &token_account)
-        }
-        ChainCommand::ConvertReleasedPnl { idx, x_req, oracle, funding_rate } => {
-            percli_chain::commands::convert_released_pnl::run(&config, idx, x_req, &oracle, funding_rate)
-        }
+        ChainCommand::TopUpInsurance {
+            amount,
+            mint,
+            token_account,
+        } => percli_chain::commands::top_up_insurance::run(&config, amount, &mint, &token_account),
+        ChainCommand::DepositFeeCredits {
+            idx,
+            amount,
+            mint,
+            token_account,
+        } => percli_chain::commands::deposit_fee_credits::run(
+            &config,
+            idx,
+            amount,
+            &mint,
+            &token_account,
+        ),
+        ChainCommand::ConvertReleasedPnl {
+            idx,
+            x_req,
+            oracle,
+            funding_rate,
+        } => percli_chain::commands::convert_released_pnl::run(
+            &config,
+            idx,
+            x_req,
+            &oracle,
+            funding_rate,
+        ),
         ChainCommand::AccrueMarket { oracle } => {
             percli_chain::commands::accrue_market::run(&config, &oracle)
         }
@@ -277,15 +312,11 @@ pub fn run(
         ChainCommand::UpdateOracle { new_oracle } => {
             percli_chain::commands::update_oracle::run(&config, &new_oracle)
         }
-        ChainCommand::MigrateHeaderV1 => {
-            percli_chain::commands::migrate_header_v1::run(&config)
-        }
+        ChainCommand::MigrateHeaderV1 => percli_chain::commands::migrate_header_v1::run(&config),
         ChainCommand::TransferAuthority { new_authority } => {
             percli_chain::commands::transfer_authority::run(&config, &new_authority)
         }
-        ChainCommand::AcceptAuthority => {
-            percli_chain::commands::accept_authority::run(&config)
-        }
+        ChainCommand::AcceptAuthority => percli_chain::commands::accept_authority::run(&config),
         ChainCommand::Query { target } => {
             let qt = if target == "market" {
                 QueryTarget::Market

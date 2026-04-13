@@ -23,7 +23,10 @@ pub fn handler(ctx: Context<Liquidate>, account_idx: u16, funding_rate: i64) -> 
     let market = &ctx.accounts.market;
     let mut data = market.try_borrow_mut_data()?;
 
-    require!(crate::state::is_v1_market(&data), PercolatorError::AccountNotFound);
+    require!(
+        crate::state::is_v1_market(&data),
+        PercolatorError::AccountNotFound
+    );
 
     let engine = engine_from_account_data(&mut data);
     let oracle_price = engine.last_oracle_price;

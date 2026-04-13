@@ -38,7 +38,12 @@ fn anchor_discriminator(name: &str) -> [u8; 8] {
     disc
 }
 
-fn build_ix(program_id: &Pubkey, name: &str, args: impl BorshSerialize, accounts: Vec<AccountMeta>) -> Instruction {
+fn build_ix(
+    program_id: &Pubkey,
+    name: &str,
+    args: impl BorshSerialize,
+    accounts: Vec<AccountMeta>,
+) -> Instruction {
     let mut data = anchor_discriminator(name).to_vec();
     args.serialize(&mut data).expect("borsh serialize");
     Instruction {
@@ -245,15 +250,9 @@ async fn mint_to(
     dest: &Pubkey,
     amount: u64,
 ) {
-    let ix = spl_token::instruction::mint_to(
-        &spl_token::id(),
-        mint,
-        dest,
-        &payer.pubkey(),
-        &[],
-        amount,
-    )
-    .unwrap();
+    let ix =
+        spl_token::instruction::mint_to(&spl_token::id(), mint, dest, &payer.pubkey(), &[], amount)
+            .unwrap();
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&payer.pubkey()),
@@ -347,11 +346,7 @@ fn withdraw_ix(
     )
 }
 
-fn trade_ix(
-    matcher: &Pubkey,
-    market: &Pubkey,
-    args: TradeArgs,
-) -> Instruction {
+fn trade_ix(matcher: &Pubkey, market: &Pubkey, args: TradeArgs) -> Instruction {
     build_ix(
         &program_id(),
         "trade",
@@ -363,11 +358,7 @@ fn trade_ix(
     )
 }
 
-fn settle_ix(
-    user: &Pubkey,
-    market: &Pubkey,
-    args: SettleArgs,
-) -> Instruction {
+fn settle_ix(user: &Pubkey, market: &Pubkey, args: SettleArgs) -> Instruction {
     build_ix(
         &program_id(),
         "settle",
@@ -379,11 +370,7 @@ fn settle_ix(
     )
 }
 
-fn close_account_ix(
-    user: &Pubkey,
-    market: &Pubkey,
-    args: CloseAccountArgs,
-) -> Instruction {
+fn close_account_ix(user: &Pubkey, market: &Pubkey, args: CloseAccountArgs) -> Instruction {
     build_ix(
         &program_id(),
         "close_account",
@@ -395,11 +382,7 @@ fn close_account_ix(
     )
 }
 
-fn liquidate_ix(
-    liquidator: &Pubkey,
-    market: &Pubkey,
-    args: LiquidateArgs,
-) -> Instruction {
+fn liquidate_ix(liquidator: &Pubkey, market: &Pubkey, args: LiquidateArgs) -> Instruction {
     build_ix(
         &program_id(),
         "liquidate",
@@ -515,11 +498,7 @@ fn update_matcher_ix(
     )
 }
 
-fn update_oracle_ix(
-    authority: &Pubkey,
-    market: &Pubkey,
-    new_oracle: &Pubkey,
-) -> Instruction {
+fn update_oracle_ix(authority: &Pubkey, market: &Pubkey, new_oracle: &Pubkey) -> Instruction {
     build_ix(
         &program_id(),
         "update_oracle",
@@ -610,10 +589,7 @@ async fn setup_market() -> TestEnv {
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    let slot = banks_client
-        .get_root_slot()
-        .await
-        .unwrap();
+    let slot = banks_client.get_root_slot().await.unwrap();
 
     let ix = initialize_market_ix(
         &authority.pubkey(),
@@ -821,11 +797,8 @@ async fn test_deposit_wrong_owner_rejected() {
     let intruder = Keypair::new();
 
     // Fund the intruder with SOL
-    let transfer_ix = system_instruction::transfer(
-        &env.authority.pubkey(),
-        &intruder.pubkey(),
-        1_000_000_000,
-    );
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
     let tx = Transaction::new_signed_with_payer(
         &[transfer_ix],
         Some(&env.authority.pubkey()),
@@ -877,7 +850,10 @@ async fn test_deposit_wrong_owner_rejected() {
         env.recent_blockhash,
     );
     let result = env.banks_client.process_transaction(tx).await;
-    assert!(result.is_err(), "deposit to owned slot by different user should fail");
+    assert!(
+        result.is_err(),
+        "deposit to owned slot by different user should fail"
+    );
 }
 
 #[tokio::test]
@@ -1009,11 +985,8 @@ async fn test_withdraw_wrong_owner_rejected() {
 
     // Intruder tries to withdraw from slot 0
     let intruder = Keypair::new();
-    let transfer_ix = system_instruction::transfer(
-        &env.authority.pubkey(),
-        &intruder.pubkey(),
-        1_000_000_000,
-    );
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
     let tx = Transaction::new_signed_with_payer(
         &[transfer_ix],
         Some(&env.authority.pubkey()),
@@ -1065,11 +1038,8 @@ async fn test_trade() {
     let user_b = Keypair::new();
 
     // Fund user B with SOL
-    let transfer_ix = system_instruction::transfer(
-        &env.authority.pubkey(),
-        &user_b.pubkey(),
-        2_000_000_000,
-    );
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &user_b.pubkey(), 2_000_000_000);
     let tx = Transaction::new_signed_with_payer(
         &[transfer_ix],
         Some(&env.authority.pubkey()),
@@ -1103,11 +1073,27 @@ async fn test_trade() {
 
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata_a, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata_a,
+        1_000_000,
+    )
+    .await;
 
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata_b, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata_b,
+        1_000_000,
+    )
+    .await;
 
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1118,7 +1104,10 @@ async fn test_trade() {
         &env.mint,
         &ata_a,
         &env.vault,
-        DepositArgs { account_idx: 0, amount: 500_000 },
+        DepositArgs {
+            account_idx: 0,
+            amount: 500_000,
+        },
     );
     let tx = Transaction::new_signed_with_payer(
         &[ix],
@@ -1137,7 +1126,10 @@ async fn test_trade() {
         &env.mint,
         &ata_b,
         &env.vault,
-        DepositArgs { account_idx: 1, amount: 500_000 },
+        DepositArgs {
+            account_idx: 1,
+            amount: 500_000,
+        },
     );
     let tx = Transaction::new_signed_with_payer(
         &[ix],
@@ -1180,29 +1172,95 @@ async fn test_trade_wrong_matcher_rejected() {
 
     // Setup two funded accounts
     let user_b = Keypair::new();
-    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &user_b.pubkey(), 2_000_000_000);
-    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &user_b.pubkey(), 2_000_000_000);
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
 
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let ata_a = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata_a = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    let ata_b = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &user_b.pubkey()).await;
+    let ata_b = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &user_b.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata_a, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata_a,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata_b, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata_b,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let dep_a = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata_a, &env.vault, DepositArgs { account_idx: 0, amount: 500_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep_a], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep_a = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata_a,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 500_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep_a],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let dep_b = deposit_ix(&user_b.pubkey(), &env.market, &env.mint, &ata_b, &env.vault, DepositArgs { account_idx: 1, amount: 500_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep_b], Some(&user_b.pubkey()), &[&user_b], env.recent_blockhash);
+    let dep_b = deposit_ix(
+        &user_b.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata_b,
+        &env.vault,
+        DepositArgs {
+            account_idx: 1,
+            amount: 500_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep_b],
+        Some(&user_b.pubkey()),
+        &[&user_b],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1233,13 +1291,43 @@ async fn test_trade_wrong_matcher_rejected() {
 async fn test_trade_self_trade_rejected() {
     let mut env = setup_market().await;
 
-    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 500_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 500_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1270,79 +1358,227 @@ async fn test_full_lifecycle() {
     let mut env = setup_market().await;
 
     let user_b = Keypair::new();
-    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &user_b.pubkey(), 2_000_000_000);
-    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &user_b.pubkey(), 2_000_000_000);
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Create ATAs and fund
-    let ata_a = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata_a = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    let ata_b = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &user_b.pubkey()).await;
+    let ata_b = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &user_b.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata_a, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata_a,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata_b, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata_b,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // 1. Deposit — both users
-    let dep_a = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata_a, &env.vault, DepositArgs { account_idx: 0, amount: 500_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep_a], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep_a = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata_a,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 500_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep_a],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let dep_b = deposit_ix(&user_b.pubkey(), &env.market, &env.mint, &ata_b, &env.vault, DepositArgs { account_idx: 1, amount: 500_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep_b], Some(&user_b.pubkey()), &[&user_b], env.recent_blockhash);
+    let dep_b = deposit_ix(
+        &user_b.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata_b,
+        &env.vault,
+        DepositArgs {
+            account_idx: 1,
+            amount: 500_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep_b],
+        Some(&user_b.pubkey()),
+        &[&user_b],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    assert_eq!(token_balance(&mut env.banks_client, &env.vault).await, 1_000_000);
+    assert_eq!(
+        token_balance(&mut env.banks_client, &env.vault).await,
+        1_000_000
+    );
 
     // 2. Settle — both accounts (no open position, just exercise the instruction)
-    let settle_a = settle_ix(&env.authority.pubkey(), &env.market, SettleArgs { account_idx: 0, funding_rate: 0 });
-    let tx = Transaction::new_signed_with_payer(&[settle_a], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let settle_a = settle_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        SettleArgs {
+            account_idx: 0,
+            funding_rate: 0,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[settle_a],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let settle_b = settle_ix(&user_b.pubkey(), &env.market, SettleArgs { account_idx: 1, funding_rate: 0 });
-    let tx = Transaction::new_signed_with_payer(&[settle_b], Some(&user_b.pubkey()), &[&user_b], env.recent_blockhash);
+    let settle_b = settle_ix(
+        &user_b.pubkey(),
+        &env.market,
+        SettleArgs {
+            account_idx: 1,
+            funding_rate: 0,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[settle_b],
+        Some(&user_b.pubkey()),
+        &[&user_b],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // 4. Close — both accounts
-    let close_a = close_account_ix(&env.authority.pubkey(), &env.market, CloseAccountArgs { account_idx: 0, funding_rate: 0 });
-    let tx = Transaction::new_signed_with_payer(&[close_a], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let close_a = close_account_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        CloseAccountArgs {
+            account_idx: 0,
+            funding_rate: 0,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[close_a],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let close_b = close_account_ix(&user_b.pubkey(), &env.market, CloseAccountArgs { account_idx: 1, funding_rate: 0 });
-    let tx = Transaction::new_signed_with_payer(&[close_b], Some(&user_b.pubkey()), &[&user_b], env.recent_blockhash);
+    let close_b = close_account_ix(
+        &user_b.pubkey(),
+        &env.market,
+        CloseAccountArgs {
+            account_idx: 1,
+            funding_rate: 0,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[close_b],
+        Some(&user_b.pubkey()),
+        &[&user_b],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // 5. Withdraw remaining balances
     let withdraw_a = withdraw_ix(
-        &env.authority.pubkey(), &env.market, &env.mint, &ata_a, &env.vault,
-        WithdrawArgs { account_idx: 0, amount: 500_000, funding_rate: 0 },
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata_a,
+        &env.vault,
+        WithdrawArgs {
+            account_idx: 0,
+            amount: 500_000,
+            funding_rate: 0,
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[withdraw_a], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[withdraw_a],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     // Note: withdraw after close may fail depending on engine semantics — that's fine.
     // The point is to exercise the full path. If close zeroes balance, skip this.
     let _ = env.banks_client.process_transaction(tx).await;
 
     // Market should still exist
     let market_account = env.banks_client.get_account(env.market).await.unwrap();
-    assert!(market_account.is_some(), "market account should still exist");
+    assert!(
+        market_account.is_some(),
+        "market account should still exist"
+    );
 }
 
 #[tokio::test]
 async fn test_deposit_zero_amount_fails() {
     let mut env = setup_market().await;
 
-    let user_ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let user_ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &user_ata, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &user_ata,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = deposit_ix(
@@ -1351,9 +1587,17 @@ async fn test_deposit_zero_amount_fails() {
         &env.mint,
         &user_ata,
         &env.vault,
-        DepositArgs { account_idx: 0, amount: 0 },
+        DepositArgs {
+            account_idx: 0,
+            amount: 0,
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     let result = env.banks_client.process_transaction(tx).await;
     assert!(result.is_err(), "zero deposit should fail");
 }
@@ -1363,47 +1607,121 @@ async fn test_deposit_zero_amount_fails() {
 // ---------------------------------------------------------------------------
 
 /// Helper: set up two funded accounts with positions for liquidation testing.
-async fn setup_two_accounts_with_trade(
-) -> (TestEnv, Keypair, Pubkey, Pubkey) {
+async fn setup_two_accounts_with_trade() -> (TestEnv, Keypair, Pubkey, Pubkey) {
     let mut env = setup_market().await;
     let user_b = Keypair::new();
 
     // Fund user B with SOL
-    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &user_b.pubkey(), 2_000_000_000);
-    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &user_b.pubkey(), 2_000_000_000);
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let ata_a = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata_a = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    let ata_b = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &user_b.pubkey()).await;
+    let ata_b = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &user_b.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata_a, 10_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata_a,
+        10_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata_b, 10_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata_b,
+        10_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Deposit for both users
-    let dep_a = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata_a, &env.vault, DepositArgs { account_idx: 0, amount: 500_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep_a], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep_a = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata_a,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 500_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep_a],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let dep_b = deposit_ix(&user_b.pubkey(), &env.market, &env.mint, &ata_b, &env.vault, DepositArgs { account_idx: 1, amount: 500_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep_b], Some(&user_b.pubkey()), &[&user_b], env.recent_blockhash);
+    let dep_b = deposit_ix(
+        &user_b.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata_b,
+        &env.vault,
+        DepositArgs {
+            account_idx: 1,
+            amount: 500_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep_b],
+        Some(&user_b.pubkey()),
+        &[&user_b],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Trade: account 0 long, account 1 short
-    let ix = trade_ix(&env.matcher.pubkey(), &env.market, TradeArgs {
-        account_a: 0,
-        account_b: 1,
-        size_q: 1_000_000,
-        exec_price: 1000,
-        funding_rate: 0,
-    });
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority, &env.matcher], env.recent_blockhash);
+    let ix = trade_ix(
+        &env.matcher.pubkey(),
+        &env.market,
+        TradeArgs {
+            account_a: 0,
+            account_b: 1,
+            size_q: 1_000_000,
+            exec_price: 1000,
+            funding_rate: 0,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority, &env.matcher],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1419,7 +1737,10 @@ async fn test_liquidate_healthy_account_no_effect() {
     let ix = liquidate_ix(
         &env.authority.pubkey(),
         &env.market,
-        LiquidateArgs { account_idx: 0, funding_rate: 0 },
+        LiquidateArgs {
+            account_idx: 0,
+            funding_rate: 0,
+        },
     );
     let tx = Transaction::new_signed_with_payer(
         &[ix],
@@ -1437,14 +1758,44 @@ async fn test_withdraw_insurance_authority_only() {
 
     // We need insurance fund to have some balance.
     // The insurance fund starts at 0. We'll deposit and trade to generate fees.
-    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 10_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata,
+        10_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Deposit (new_account_fee=0 in our config, so no insurance accrual from deposit alone)
-    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 1_000_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 1_000_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1457,7 +1808,12 @@ async fn test_withdraw_insurance_authority_only() {
         &env.vault,
         WithdrawInsuranceArgs { amount: 0 },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     let result = env.banks_client.process_transaction(tx).await;
     assert!(result.is_err(), "zero withdraw_insurance should fail");
 }
@@ -1467,12 +1823,25 @@ async fn test_withdraw_insurance_unauthorized() {
     let mut env = setup_market().await;
 
     let intruder = Keypair::new();
-    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
-    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let intruder_ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &intruder.pubkey()).await;
+    let intruder_ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &intruder.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Non-authority tries to withdraw insurance
@@ -1484,23 +1853,61 @@ async fn test_withdraw_insurance_unauthorized() {
         &env.vault,
         WithdrawInsuranceArgs { amount: 1000 },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&intruder.pubkey()), &[&intruder], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&intruder.pubkey()),
+        &[&intruder],
+        env.recent_blockhash,
+    );
     let result = env.banks_client.process_transaction(tx).await;
-    assert!(result.is_err(), "non-authority withdraw_insurance should fail");
+    assert!(
+        result.is_err(),
+        "non-authority withdraw_insurance should fail"
+    );
 }
 
 #[tokio::test]
 async fn test_reclaim_active_account_rejected() {
     let mut env = setup_market().await;
 
-    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Deposit enough capital (well above min_initial_deposit=1000)
-    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 100_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 100_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1510,7 +1917,12 @@ async fn test_reclaim_active_account_rejected() {
         &env.market,
         ReclaimAccountArgs { account_idx: 0 },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     let result = env.banks_client.process_transaction(tx).await;
     assert!(result.is_err(), "reclaim of active account should fail");
 }
@@ -1539,29 +1951,73 @@ async fn test_reclaim_unused_slot_rejected() {
 async fn test_close_account_wrong_owner_rejected() {
     let mut env = setup_market().await;
 
-    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 100_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 100_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Intruder tries to close
     let intruder = Keypair::new();
-    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
-    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = close_account_ix(
         &intruder.pubkey(),
         &env.market,
-        CloseAccountArgs { account_idx: 0, funding_rate: 0 },
+        CloseAccountArgs {
+            account_idx: 0,
+            funding_rate: 0,
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&intruder.pubkey()), &[&intruder], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&intruder.pubkey()),
+        &[&intruder],
+        env.recent_blockhash,
+    );
     let result = env.banks_client.process_transaction(tx).await;
     assert!(result.is_err(), "close by non-owner should fail");
 }
@@ -1571,14 +2027,38 @@ async fn test_deposit_trade_settle_close_lifecycle() {
     let (mut env, user_b, ata_a, _ata_b) = setup_two_accounts_with_trade().await;
 
     // Settle account 0
-    let ix = settle_ix(&env.authority.pubkey(), &env.market, SettleArgs { account_idx: 0, funding_rate: 0 });
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let ix = settle_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        SettleArgs {
+            account_idx: 0,
+            funding_rate: 0,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Settle account 1
-    let ix = settle_ix(&user_b.pubkey(), &env.market, SettleArgs { account_idx: 1, funding_rate: 0 });
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&user_b.pubkey()), &[&user_b], env.recent_blockhash);
+    let ix = settle_ix(
+        &user_b.pubkey(),
+        &env.market,
+        SettleArgs {
+            account_idx: 1,
+            funding_rate: 0,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&user_b.pubkey()),
+        &[&user_b],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1588,10 +2068,23 @@ async fn test_deposit_trade_settle_close_lifecycle() {
 
     // Withdraw from account 0 (partial)
     let ix = withdraw_ix(
-        &env.authority.pubkey(), &env.market, &env.mint, &ata_a, &env.vault,
-        WithdrawArgs { account_idx: 0, amount: 10_000, funding_rate: 0 },
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata_a,
+        &env.vault,
+        WithdrawArgs {
+            account_idx: 0,
+            amount: 10_000,
+            funding_rate: 0,
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
 
     // Verify user received tokens
@@ -1603,20 +2096,65 @@ async fn test_deposit_trade_settle_close_lifecycle() {
 async fn test_multiple_deposits_same_slot() {
     let mut env = setup_market().await;
 
-    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 10_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata,
+        10_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Deposit 1
-    let dep1 = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 50_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep1], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep1 = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 50_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep1],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Deposit 2 (same slot, same owner)
-    let dep2 = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 30_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep2], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep2 = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 30_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep2],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
 
     // Vault should have 80_000
@@ -1628,22 +2166,65 @@ async fn test_multiple_deposits_same_slot() {
 async fn test_withdraw_more_than_available_rejected() {
     let mut env = setup_market().await;
 
-    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 10_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 10_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Try to withdraw more than deposited
     let ix = withdraw_ix(
-        &env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault,
-        WithdrawArgs { account_idx: 0, amount: 999_999, funding_rate: 0 },
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        WithdrawArgs {
+            account_idx: 0,
+            amount: 999_999,
+            funding_rate: 0,
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     let result = env.banks_client.process_transaction(tx).await;
     assert!(result.is_err(), "withdrawing more than balance should fail");
 }
@@ -1656,9 +2237,24 @@ async fn test_withdraw_more_than_available_rejected() {
 async fn test_top_up_insurance() {
     let mut env = setup_market().await;
 
-    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = top_up_insurance_ix(
@@ -1669,7 +2265,12 @@ async fn test_top_up_insurance() {
         &env.vault,
         TopUpInsuranceArgs { amount: 50_000 },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
 
     let vault_bal = token_balance(&mut env.banks_client, &env.vault).await;
@@ -1683,9 +2284,24 @@ async fn test_top_up_insurance() {
 async fn test_top_up_insurance_zero_fails() {
     let mut env = setup_market().await;
 
-    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = top_up_insurance_ix(
@@ -1696,7 +2312,12 @@ async fn test_top_up_insurance_zero_fails() {
         &env.vault,
         TopUpInsuranceArgs { amount: 0 },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     let result = env.banks_client.process_transaction(tx).await;
     assert!(result.is_err(), "zero top-up should fail");
 }
@@ -1707,14 +2328,38 @@ async fn test_top_up_insurance_permissionless() {
 
     // Random user (not authority) can top up
     let random_user = Keypair::new();
-    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &random_user.pubkey(), 1_000_000_000);
-    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let transfer_ix = system_instruction::transfer(
+        &env.authority.pubkey(),
+        &random_user.pubkey(),
+        1_000_000_000,
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let user_ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &random_user.pubkey()).await;
+    let user_ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &random_user.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &user_ata, 100_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &user_ata,
+        100_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = top_up_insurance_ix(
@@ -1725,7 +2370,12 @@ async fn test_top_up_insurance_permissionless() {
         &env.vault,
         TopUpInsuranceArgs { amount: 25_000 },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&random_user.pubkey()), &[&random_user], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&random_user.pubkey()),
+        &[&random_user],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
 
     let vault_bal = token_balance(&mut env.banks_client, &env.vault).await;
@@ -1736,14 +2386,44 @@ async fn test_top_up_insurance_permissionless() {
 async fn test_deposit_fee_credits() {
     let mut env = setup_market().await;
 
-    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // First deposit to open the account slot
-    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 100_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 100_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1754,9 +2434,17 @@ async fn test_deposit_fee_credits() {
         &env.mint,
         &ata,
         &env.vault,
-        DepositFeeCreditsArgs { account_idx: 0, amount: 10_000 },
+        DepositFeeCreditsArgs {
+            account_idx: 0,
+            amount: 10_000,
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
 
     // Vault should now have deposit + fee credits
@@ -1769,26 +2457,77 @@ async fn test_deposit_fee_credits_wrong_owner() {
     let mut env = setup_market().await;
 
     // Authority opens slot 0
-    let ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &env.authority.pubkey()).await;
+    let ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &env.authority.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &ata, 1_000_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &ata,
+        1_000_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let dep = deposit_ix(&env.authority.pubkey(), &env.market, &env.mint, &ata, &env.vault, DepositArgs { account_idx: 0, amount: 100_000 });
-    let tx = Transaction::new_signed_with_payer(&[dep], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let dep = deposit_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        &env.mint,
+        &ata,
+        &env.vault,
+        DepositArgs {
+            account_idx: 0,
+            amount: 100_000,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[dep],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Intruder tries to deposit fee credits to authority's slot
     let intruder = Keypair::new();
-    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
-    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let intruder_ata = create_ata(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &intruder.pubkey()).await;
+    let intruder_ata = create_ata(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &intruder.pubkey(),
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
-    mint_to(&mut env.banks_client, &env.authority, env.recent_blockhash, &env.mint, &intruder_ata, 100_000).await;
+    mint_to(
+        &mut env.banks_client,
+        &env.authority,
+        env.recent_blockhash,
+        &env.mint,
+        &intruder_ata,
+        100_000,
+    )
+    .await;
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = deposit_fee_credits_ix(
@@ -1797,11 +2536,22 @@ async fn test_deposit_fee_credits_wrong_owner() {
         &env.mint,
         &intruder_ata,
         &env.vault,
-        DepositFeeCreditsArgs { account_idx: 0, amount: 5_000 },
+        DepositFeeCreditsArgs {
+            account_idx: 0,
+            amount: 5_000,
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&intruder.pubkey()), &[&intruder], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&intruder.pubkey()),
+        &[&intruder],
+        env.recent_blockhash,
+    );
     let result = env.banks_client.process_transaction(tx).await;
-    assert!(result.is_err(), "deposit_fee_credits by non-owner should fail");
+    assert!(
+        result.is_err(),
+        "deposit_fee_credits by non-owner should fail"
+    );
 }
 
 #[tokio::test]
@@ -1814,9 +2564,16 @@ async fn test_update_matcher() {
     let ix = update_matcher_ix(
         &env.authority.pubkey(),
         &env.market,
-        UpdateMatcherArgsTest { new_matcher: new_matcher.pubkey() },
+        UpdateMatcherArgsTest {
+            new_matcher: new_matcher.pubkey(),
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1824,28 +2581,75 @@ async fn test_update_matcher() {
     let ix = trade_ix(
         &env.matcher.pubkey(),
         &env.market,
-        TradeArgs { account_a: 0, account_b: 1, size_q: 50, exec_price: 1000, funding_rate: 0 },
+        TradeArgs {
+            account_a: 0,
+            account_b: 1,
+            size_q: 50,
+            exec_price: 1000,
+            funding_rate: 0,
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority, &env.matcher], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority, &env.matcher],
+        env.recent_blockhash,
+    );
     let result = env.banks_client.process_transaction(tx).await;
-    assert!(result.is_err(), "old matcher should be rejected after rotation");
+    assert!(
+        result.is_err(),
+        "old matcher should be rejected after rotation"
+    );
 
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Fund new matcher with SOL
-    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &new_matcher.pubkey(), 1_000_000_000);
-    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let transfer_ix = system_instruction::transfer(
+        &env.authority.pubkey(),
+        &new_matcher.pubkey(),
+        1_000_000_000,
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // New matcher should work — settle first to flatten positions
-    let settle_a = settle_ix(&env.authority.pubkey(), &env.market, SettleArgs { account_idx: 0, funding_rate: 0 });
-    let tx = Transaction::new_signed_with_payer(&[settle_a], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let settle_a = settle_ix(
+        &env.authority.pubkey(),
+        &env.market,
+        SettleArgs {
+            account_idx: 0,
+            funding_rate: 0,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[settle_a],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let settle_b = settle_ix(&user_b.pubkey(), &env.market, SettleArgs { account_idx: 1, funding_rate: 0 });
-    let tx = Transaction::new_signed_with_payer(&[settle_b], Some(&user_b.pubkey()), &[&user_b], env.recent_blockhash);
+    let settle_b = settle_ix(
+        &user_b.pubkey(),
+        &env.market,
+        SettleArgs {
+            account_idx: 1,
+            funding_rate: 0,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[settle_b],
+        Some(&user_b.pubkey()),
+        &[&user_b],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1853,9 +2657,20 @@ async fn test_update_matcher() {
     let ix = trade_ix(
         &new_matcher.pubkey(),
         &env.market,
-        TradeArgs { account_a: 0, account_b: 1, size_q: 50, exec_price: 1000, funding_rate: 0 },
+        TradeArgs {
+            account_a: 0,
+            account_b: 1,
+            size_q: 50,
+            exec_price: 1000,
+            funding_rate: 0,
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&env.authority.pubkey()), &[&env.authority, &new_matcher], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority, &new_matcher],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
 }
 
@@ -1864,17 +2679,30 @@ async fn test_update_matcher_unauthorized() {
     let mut env = setup_market().await;
 
     let intruder = Keypair::new();
-    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
-    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = update_matcher_ix(
         &intruder.pubkey(),
         &env.market,
-        UpdateMatcherArgsTest { new_matcher: intruder.pubkey() },
+        UpdateMatcherArgsTest {
+            new_matcher: intruder.pubkey(),
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&intruder.pubkey()), &[&intruder], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&intruder.pubkey()),
+        &[&intruder],
+        env.recent_blockhash,
+    );
     let result = env.banks_client.process_transaction(tx).await;
     assert!(result.is_err(), "non-authority update_matcher should fail");
 }
@@ -1898,7 +2726,9 @@ async fn test_update_oracle() {
     let authority = Keypair::new();
     let old_oracle = Pubkey::new_unique();
     let new_oracle_key = Pubkey::new_unique();
-    let pyth_program_id: Pubkey = "FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH".parse().unwrap();
+    let pyth_program_id: Pubkey = "FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH"
+        .parse()
+        .unwrap();
 
     let mut pt = program_test();
     let (market, _bump) = market_pda(&authority.pubkey());
@@ -1958,23 +2788,46 @@ async fn test_update_oracle() {
 
     let slot = banks_client.get_root_slot().await.unwrap();
     let ix = initialize_market_ix(
-        &authority.pubkey(), &market, &mint_kp.pubkey(), &vault, &old_oracle, &matcher.pubkey(),
-        InitializeMarketArgs { init_slot: slot, init_oracle_price: 1000, params: default_risk_params() },
+        &authority.pubkey(),
+        &market,
+        &mint_kp.pubkey(),
+        &vault,
+        &old_oracle,
+        &matcher.pubkey(),
+        InitializeMarketArgs {
+            init_slot: slot,
+            init_oracle_price: 1000,
+            params: default_risk_params(),
+        },
     );
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&authority.pubkey()), &[&authority], recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&authority.pubkey()),
+        &[&authority],
+        recent_blockhash,
+    );
     banks_client.process_transaction(tx).await.unwrap();
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     // Update oracle
     let ix = update_oracle_ix(&authority.pubkey(), &market, &new_oracle_key);
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&authority.pubkey()), &[&authority], recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&authority.pubkey()),
+        &[&authority],
+        recent_blockhash,
+    );
     banks_client.process_transaction(tx).await.unwrap();
 
     // Verify: read the header and check oracle field
     let market_account = banks_client.get_account(market).await.unwrap().unwrap();
     // The oracle pubkey is at offset 8 (discriminator) + 32 (authority) + 32 (mint) = 72
     let oracle_bytes = &market_account.data[72..104];
-    assert_eq!(oracle_bytes, new_oracle_key.to_bytes(), "oracle should be updated in header");
+    assert_eq!(
+        oracle_bytes,
+        new_oracle_key.to_bytes(),
+        "oracle should be updated in header"
+    );
 }
 
 #[tokio::test]
@@ -1982,14 +2835,25 @@ async fn test_update_oracle_unauthorized() {
     let mut env = setup_market().await;
 
     let intruder = Keypair::new();
-    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
-    let tx = Transaction::new_signed_with_payer(&[transfer_ix], Some(&env.authority.pubkey()), &[&env.authority], env.recent_blockhash);
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &intruder.pubkey(), 1_000_000_000);
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&env.authority.pubkey()),
+        &[&env.authority],
+        env.recent_blockhash,
+    );
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // Intruder tries to update oracle — should fail even though we use the existing oracle as new_oracle
     let ix = update_oracle_ix(&intruder.pubkey(), &env.market, &env.oracle);
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&intruder.pubkey()), &[&intruder], env.recent_blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&intruder.pubkey()),
+        &[&intruder],
+        env.recent_blockhash,
+    );
     let result = env.banks_client.process_transaction(tx).await;
     assert!(result.is_err(), "non-authority update_oracle should fail");
 }
@@ -2226,11 +3090,23 @@ async fn test_migrate_header_v1_happy_path() {
     // Discriminator now carries the v1 version byte (0x01) at offset [7].
     assert_eq!(&acct.data[0..7], b"percmrk");
     assert_eq!(acct.data[7], 0x01, "version byte stamped to v1 (0x01)");
-    assert_eq!(&acct.data[8..40], authority.pubkey().as_ref(), "authority preserved");
+    assert_eq!(
+        &acct.data[8..40],
+        authority.pubkey().as_ref(),
+        "authority preserved"
+    );
     assert_eq!(&acct.data[40..72], mint_key.as_ref(), "mint preserved");
     assert_eq!(&acct.data[72..104], oracle.as_ref(), "oracle preserved");
-    assert_eq!(&acct.data[104..136], matcher_key.as_ref(), "matcher preserved");
-    assert_eq!(&acct.data[136..168], Pubkey::default().as_ref(), "pending_authority is default");
+    assert_eq!(
+        &acct.data[104..136],
+        matcher_key.as_ref(),
+        "matcher preserved"
+    );
+    assert_eq!(
+        &acct.data[136..168],
+        Pubkey::default().as_ref(),
+        "pending_authority is default"
+    );
     assert_eq!(acct.data[168], market_bump, "bump preserved");
     assert_eq!(acct.data[169], vault_bump, "vault_bump preserved");
 }
@@ -2345,9 +3221,22 @@ async fn test_transfer_and_accept_authority_happy_path() {
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // After step 1: header.authority is unchanged, header.pending_authority is the new key.
-    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
-    assert_eq!(&acct.data[8..40], env.authority.pubkey().as_ref(), "authority unchanged after initiate");
-    assert_eq!(&acct.data[136..168], new_authority.pubkey().as_ref(), "pending_authority set");
+    let acct = env
+        .banks_client
+        .get_account(env.market)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        &acct.data[8..40],
+        env.authority.pubkey().as_ref(),
+        "authority unchanged after initiate"
+    );
+    assert_eq!(
+        &acct.data[136..168],
+        new_authority.pubkey().as_ref(),
+        "pending_authority set"
+    );
 
     // Step 2: new authority accepts.
     let ix = accept_authority_ix(&new_authority.pubkey(), &env.market);
@@ -2359,9 +3248,22 @@ async fn test_transfer_and_accept_authority_happy_path() {
     );
     env.banks_client.process_transaction(tx).await.unwrap();
 
-    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
-    assert_eq!(&acct.data[8..40], new_authority.pubkey().as_ref(), "authority rotated");
-    assert_eq!(&acct.data[136..168], Pubkey::default().as_ref(), "pending_authority cleared");
+    let acct = env
+        .banks_client
+        .get_account(env.market)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        &acct.data[8..40],
+        new_authority.pubkey().as_ref(),
+        "authority rotated"
+    );
+    assert_eq!(
+        &acct.data[136..168],
+        Pubkey::default().as_ref(),
+        "pending_authority cleared"
+    );
 }
 
 #[tokio::test]
@@ -2372,8 +3274,7 @@ async fn test_accept_authority_wrong_signer_fails() {
 
     // Fund both
     for pk in [pending.pubkey(), intruder.pubkey()] {
-        let transfer_ix =
-            system_instruction::transfer(&env.authority.pubkey(), &pk, 1_000_000_000);
+        let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &pk, 1_000_000_000);
         let tx = Transaction::new_signed_with_payer(
             &[transfer_ix],
             Some(&env.authority.pubkey()),
@@ -2407,8 +3308,17 @@ async fn test_accept_authority_wrong_signer_fails() {
     assert!(result.is_err(), "non-pending signer should be rejected");
 
     // And the original authority should still be in place.
-    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
-    assert_eq!(&acct.data[8..40], env.authority.pubkey().as_ref(), "authority unchanged after failed accept");
+    let acct = env
+        .banks_client
+        .get_account(env.market)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        &acct.data[8..40],
+        env.authority.pubkey().as_ref(),
+        "authority unchanged after failed accept"
+    );
 }
 
 #[tokio::test]
@@ -2438,12 +3348,22 @@ async fn test_transfer_authority_cancel() {
     env.banks_client.process_transaction(tx).await.unwrap();
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
-    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
-    assert_eq!(&acct.data[136..168], Pubkey::default().as_ref(), "pending cleared after cancel");
+    let acct = env
+        .banks_client
+        .get_account(env.market)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        &acct.data[136..168],
+        Pubkey::default().as_ref(),
+        "pending cleared after cancel"
+    );
 
     // And `pending` can no longer accept (NoPendingAuthority).
     // Fund pending so the signer check happens, not lamports.
-    let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &pending.pubkey(), 1_000_000_000);
+    let transfer_ix =
+        system_instruction::transfer(&env.authority.pubkey(), &pending.pubkey(), 1_000_000_000);
     let tx = Transaction::new_signed_with_payer(
         &[transfer_ix],
         Some(&env.authority.pubkey()),
@@ -2482,8 +3402,17 @@ async fn test_transfer_authority_self_transfer_rejected() {
     assert!(result.is_err(), "self-transfer must be rejected");
 
     // The header should be untouched.
-    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
-    assert_eq!(&acct.data[8..40], env.authority.pubkey().as_ref(), "authority unchanged");
+    let acct = env
+        .banks_client
+        .get_account(env.market)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        &acct.data[8..40],
+        env.authority.pubkey().as_ref(),
+        "authority unchanged"
+    );
     assert_eq!(
         &acct.data[136..168],
         Pubkey::default().as_ref(),
@@ -2502,8 +3431,7 @@ async fn test_transfer_authority_overwrite_pending() {
 
     // Fund both so they can sign.
     for pk in [first.pubkey(), second.pubkey()] {
-        let transfer_ix =
-            system_instruction::transfer(&env.authority.pubkey(), &pk, 1_000_000_000);
+        let transfer_ix = system_instruction::transfer(&env.authority.pubkey(), &pk, 1_000_000_000);
         let tx = Transaction::new_signed_with_payer(
             &[transfer_ix],
             Some(&env.authority.pubkey()),
@@ -2537,8 +3465,17 @@ async fn test_transfer_authority_overwrite_pending() {
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
 
     // pending_authority is now `second`.
-    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
-    assert_eq!(&acct.data[136..168], second.pubkey().as_ref(), "pending overwritten to second");
+    let acct = env
+        .banks_client
+        .get_account(env.market)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        &acct.data[136..168],
+        second.pubkey().as_ref(),
+        "pending overwritten to second"
+    );
 
     // `first` can no longer accept.
     let ix = accept_authority_ix(&first.pubkey(), &env.market);
@@ -2561,8 +3498,17 @@ async fn test_transfer_authority_overwrite_pending() {
     );
     env.banks_client.process_transaction(tx).await.unwrap();
 
-    let acct = env.banks_client.get_account(env.market).await.unwrap().unwrap();
-    assert_eq!(&acct.data[8..40], second.pubkey().as_ref(), "authority rotated to second");
+    let acct = env
+        .banks_client
+        .get_account(env.market)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        &acct.data[8..40],
+        second.pubkey().as_ref(),
+        "authority rotated to second"
+    );
 }
 
 #[tokio::test]
@@ -2761,7 +3707,12 @@ async fn test_accrue_market_with_pyth() {
     // for a clean 1500.
     let mut env = setup_pyth_market(1500, 0).await;
 
-    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+    let blockhash = env
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
 
     let ix = accrue_market_ix(&env.authority.pubkey(), &env.market, &env.oracle);
     let tx = Transaction::new_signed_with_payer(
@@ -2787,7 +3738,12 @@ async fn test_accrue_market_stale_price_fails() {
     clock.unix_timestamp = PINNED_UNIX_TS + 300;
     env.context.set_sysvar(&clock);
 
-    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+    let blockhash = env
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
 
     let ix = accrue_market_ix(&env.authority.pubkey(), &env.market, &env.oracle);
     let tx = Transaction::new_signed_with_payer(
@@ -2825,7 +3781,12 @@ async fn test_convert_released_pnl_with_pyth() {
     let mut env = setup_pyth_market(1500, 0).await;
 
     // Create user's ATA + mint to it
-    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+    let blockhash = env
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
     let user_ata = create_ata(
         &mut env.context.banks_client,
         &env.authority,
@@ -2834,7 +3795,12 @@ async fn test_convert_released_pnl_with_pyth() {
         &env.authority.pubkey(),
     )
     .await;
-    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+    let blockhash = env
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
     mint_to(
         &mut env.context.banks_client,
         &env.authority,
@@ -2844,7 +3810,12 @@ async fn test_convert_released_pnl_with_pyth() {
         10_000_000,
     )
     .await;
-    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+    let blockhash = env
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
 
     // Deposit to slot 0 so we have an account to convert against.
     let ix = deposit_ix(
@@ -2853,7 +3824,10 @@ async fn test_convert_released_pnl_with_pyth() {
         &env.mint,
         &user_ata,
         &env.vault,
-        DepositArgs { account_idx: 0, amount: 1_000_000 },
+        DepositArgs {
+            account_idx: 0,
+            amount: 1_000_000,
+        },
     );
     let tx = Transaction::new_signed_with_payer(
         &[ix],
@@ -2861,19 +3835,32 @@ async fn test_convert_released_pnl_with_pyth() {
         &[&env.authority],
         blockhash,
     );
-    env.context.banks_client.process_transaction(tx).await.unwrap();
+    env.context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
 
     // Re-pin clock again after the deposit tick.
     let mut clock: Clock = env.context.banks_client.get_sysvar().await.unwrap();
     clock.unix_timestamp = PINNED_UNIX_TS;
     env.context.set_sysvar(&clock);
 
-    let blockhash = env.context.banks_client.get_latest_blockhash().await.unwrap();
+    let blockhash = env
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
     let ix = convert_released_pnl_ix(
         &env.authority.pubkey(),
         &env.market,
         &env.oracle,
-        ConvertReleasedPnlArgsTest { account_idx: 0, x_req: 0, funding_rate: 0 },
+        ConvertReleasedPnlArgsTest {
+            account_idx: 0,
+            x_req: 0,
+            funding_rate: 0,
+        },
     );
     let tx = Transaction::new_signed_with_payer(
         &[ix],

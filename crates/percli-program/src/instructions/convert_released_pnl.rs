@@ -36,7 +36,10 @@ pub fn handler(
     // Verify oracle matches header
     {
         let data = ctx.accounts.market.try_borrow_data()?;
-        require!(crate::state::is_v1_market(&data), PercolatorError::AccountNotFound);
+        require!(
+            crate::state::is_v1_market(&data),
+            PercolatorError::AccountNotFound
+        );
         let header = header_from_account_data(&data)?;
         require!(
             header.oracle == ctx.accounts.oracle.key(),
@@ -59,13 +62,19 @@ pub fn handler(
         .unix_timestamp
         .checked_sub(price_account.timestamp)
         .ok_or_else(|| error!(PercolatorError::StaleOracle))?;
-    require!(price_age <= MAX_PRICE_AGE_SECS, PercolatorError::StaleOracle);
+    require!(
+        price_age <= MAX_PRICE_AGE_SECS,
+        PercolatorError::StaleOracle
+    );
 
     let price = price_account.agg.price;
     let expo = price_account.expo;
 
     require!(price > 0, PercolatorError::InvalidOraclePriceValue);
-    require!(expo >= -18 && expo <= 18, PercolatorError::InvalidOraclePrice);
+    require!(
+        expo >= -18 && expo <= 18,
+        PercolatorError::InvalidOraclePrice
+    );
 
     let oracle_price = if expo >= 0 {
         (price as u64)
@@ -94,7 +103,13 @@ pub fn handler(
     let engine = engine_from_account_data(&mut data);
 
     engine
-        .convert_released_pnl_not_atomic(account_idx, x_req as u128, oracle_price, clock.slot, funding_rate)
+        .convert_released_pnl_not_atomic(
+            account_idx,
+            x_req as u128,
+            oracle_price,
+            clock.slot,
+            funding_rate,
+        )
         .map_err(from_risk_error)?;
 
     emit!(events::PnlConverted {

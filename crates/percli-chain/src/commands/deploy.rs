@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
 use solana_sdk::pubkey::Pubkey;
+#[allow(deprecated)]
 use solana_sdk::system_instruction;
 
 use crate::config::ChainConfig;

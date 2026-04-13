@@ -57,13 +57,11 @@ pub const MARKET_ACCOUNT_SIZE: usize = 8 + MarketHeader::SIZE + std::mem::size_o
 
 /// Total account size for the legacy v0.9 layout. Used by `migrate_header_v1`
 /// to validate that the account being migrated is a pre-v1 market.
-pub const MARKET_ACCOUNT_SIZE_V0: usize = 8 + MarketHeader::SIZE_V0 + std::mem::size_of::<RiskEngine>();
+pub const MARKET_ACCOUNT_SIZE_V0: usize =
+    8 + MarketHeader::SIZE_V0 + std::mem::size_of::<RiskEngine>();
 
 /// Market PDA signer seeds: [b"market", authority_key, &[bump]]
-pub fn market_signer_seeds<'a>(
-    authority: &'a Pubkey,
-    bump: &'a [u8; 1],
-) -> [&'a [u8]; 3] {
+pub fn market_signer_seeds<'a>(authority: &'a Pubkey, bump: &'a [u8; 1]) -> [&'a [u8]; 3] {
     [b"market", authority.as_ref(), bump.as_ref()]
 }
 
@@ -84,7 +82,9 @@ pub fn engine_from_account_data_ref(data: &[u8]) -> &RiskEngine {
     unsafe { &*(engine_bytes.as_ptr() as *const RiskEngine) }
 }
 
-pub fn header_from_account_data(data: &[u8]) -> std::result::Result<MarketHeader, anchor_lang::error::Error> {
+pub fn header_from_account_data(
+    data: &[u8],
+) -> std::result::Result<MarketHeader, anchor_lang::error::Error> {
     let header_bytes = &data[8..8 + MarketHeader::SIZE];
     MarketHeader::try_from_slice(header_bytes)
         .map_err(|_| anchor_lang::error!(crate::error::PercolatorError::CorruptState))

@@ -60,10 +60,7 @@ pub fn handler(
     let mut data = market.try_borrow_mut_data()?;
 
     // Ensure the account hasn't already been initialized
-    require!(
-        data[0..8] == [0u8; 8],
-        PercolatorError::AccountNotFound
-    );
+    require!(data[0..8] == [0u8; 8], PercolatorError::AccountNotFound);
 
     // Write discriminator: 7 fixed bytes + 1 layout-version byte (`0x01` = v1).
     // The version byte at offset [7] is what `migrate_header_v1` reads to
@@ -83,7 +80,10 @@ pub fn handler(
     };
     write_header(&mut data, &header);
 
-    require!(init_oracle_price > 0, PercolatorError::InvalidOraclePriceValue);
+    require!(
+        init_oracle_price > 0,
+        PercolatorError::InvalidOraclePriceValue
+    );
 
     let engine = engine_from_account_data(&mut data);
     let risk_params = params.to_risk_params();

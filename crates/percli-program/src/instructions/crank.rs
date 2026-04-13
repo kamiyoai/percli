@@ -35,7 +35,10 @@ pub fn handler(ctx: Context<Crank>, funding_rate: i64) -> Result<()> {
     // Verify the oracle account matches the one stored in the market header
     {
         let data = ctx.accounts.market.try_borrow_data()?;
-        require!(crate::state::is_v1_market(&data), PercolatorError::AccountNotFound);
+        require!(
+            crate::state::is_v1_market(&data),
+            PercolatorError::AccountNotFound
+        );
         let header = header_from_account_data(&data)?;
         require!(
             header.oracle == ctx.accounts.oracle.key(),
@@ -61,7 +64,10 @@ pub fn handler(ctx: Context<Crank>, funding_rate: i64) -> Result<()> {
     let price_age = current_timestamp
         .checked_sub(price_account.timestamp)
         .ok_or_else(|| error!(PercolatorError::StaleOracle))?;
-    require!(price_age <= MAX_PRICE_AGE_SECS, PercolatorError::StaleOracle);
+    require!(
+        price_age <= MAX_PRICE_AGE_SECS,
+        PercolatorError::StaleOracle
+    );
 
     let price = price_account.agg.price;
     let expo = price_account.expo;
@@ -70,7 +76,10 @@ pub fn handler(ctx: Context<Crank>, funding_rate: i64) -> Result<()> {
     require!(price > 0, PercolatorError::InvalidOraclePriceValue);
 
     // Bound exponent to reasonable range to prevent overflow/truncation-to-zero
-    require!(expo >= -18 && expo <= 18, PercolatorError::InvalidOraclePrice);
+    require!(
+        expo >= -18 && expo <= 18,
+        PercolatorError::InvalidOraclePrice
+    );
 
     // Convert Pyth price to u64 oracle price for the engine.
     // Pyth prices have an exponent (e.g. price=12345, expo=-2 means $123.45).
