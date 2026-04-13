@@ -1,8 +1,24 @@
 # percli
 
+[![CI](https://github.com/kamiyoai/percli/actions/workflows/ci.yml/badge.svg)](https://github.com/kamiyoai/percli/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/percli.svg)](https://crates.io/crates/percli)
+[![docs.rs](https://img.shields.io/docsrs/percli)](https://docs.rs/percli)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](#license)
+[![Playground](https://img.shields.io/badge/playground-live-brightgreen)](https://kamiyoai.github.io/percli)
+
 CLI toolkit for the [Percolator](https://github.com/aeyakovenko/percolator) risk engine — simulate, test, and operate perp markets on Solana.
 
 > **This software has not been audited by a third-party security firm. Use at your own risk. The authors accept no liability for loss of funds.**
+
+## What's new in v1.0
+
+First production-ready release. Full notes in [CHANGELOG.md](CHANGELOG.md).
+
+- **In-place v0→v1 market header migration** (`migrate_header_v1`) — rewrites via `copy_within`, no realloc, no rent top-up, no downtime. PDA bump re-validated against `find_program_address` to refuse corrupted accounts.
+- **Two-step authority transfer** (`transfer_authority` + `accept_authority`) — self-transfer rejected; `Pubkey::default()` cancels a pending handoff.
+- **Canonical ABI reference** — see [ABI.md](ABI.md): 19 instructions, Borsh layouts, account-data layout, error codes 6000–6019, discriminator table.
+- **Operator handbook** — see [DEPLOYMENT.md](DEPLOYMENT.md): devnet deploy, market init, program upgrades, migration, mainnet checklist.
+- **Hardened CI** — `cargo build-sbf` + on-chain integration test suite on every push. 42 integration tests total.
 
 ## Install
 
@@ -344,11 +360,13 @@ The on-chain Anchor program validates:
 - **SPL token constraints** — mint, owner, and vault PDA seeds are verified by Anchor
 - **Checked price conversion** — Pyth exponent handling uses checked arithmetic with bounded exponent range
 
-**This software has not been audited by a third-party security firm.** If you discover a vulnerability, please report it privately via GitHub Security Advisories rather than opening a public issue.
+**This software has not been audited by a third-party security firm.** To report a vulnerability privately, follow the process in [SECURITY.md](SECURITY.md) rather than opening a public issue.
+
+The full engine specification is in [spec.md](spec.md); the wire-format ABI is in [ABI.md](ABI.md).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR guidelines. Community standards in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Past and present contributors are listed in [CONTRIBUTORS.md](CONTRIBUTORS.md).
 
 ## License
 
