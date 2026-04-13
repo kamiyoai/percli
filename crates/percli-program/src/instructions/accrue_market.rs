@@ -67,7 +67,7 @@ pub fn handler(ctx: Context<AccrueMarket>) -> Result<()> {
 
     require!(price > 0, PercolatorError::InvalidOraclePriceValue);
     require!(
-        expo >= -18 && expo <= 18,
+        (-18..=18).contains(&expo),
         PercolatorError::InvalidOraclePrice
     );
 

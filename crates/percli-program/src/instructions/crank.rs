@@ -77,7 +77,7 @@ pub fn handler(ctx: Context<Crank>, funding_rate: i64) -> Result<()> {
 
     // Bound exponent to reasonable range to prevent overflow/truncation-to-zero
     require!(
-        expo >= -18 && expo <= 18,
+        (-18..=18).contains(&expo),
         PercolatorError::InvalidOraclePrice
     );
 
